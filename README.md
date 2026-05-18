@@ -78,6 +78,3 @@ This is early. The most useful contributions right now are:
 
 Nothing about LASA is set in stone before v1 is declared stable.
 
-## License
-
-See [LICENSE](LICENSE). The spec text itself should be permissively licensed to allow implementations to quote it freely — finalizing that is on the TODO.
