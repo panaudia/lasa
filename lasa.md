@@ -1,6 +1,6 @@
 # LASA — Live Atomic Spatial Audio
 
-**Status:** draft v1
+**Status:** draft v2
 **Scope:** per-packet binary wire format for live, lossy-tolerant spatial audio streaming.
 **Licence:** This specification text is licensed under [Creative Commons Attribution 4.0 International (CC-BY 4.0)](https://creativecommons.org/licenses/by/4.0/). The repository as a whole is MIT-licensed; see [`LICENSE`](LICENSE).
 
