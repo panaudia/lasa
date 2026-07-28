@@ -80,13 +80,47 @@ Recorded so they cannot drift silently; each has a reopen trigger.
    The engine leaves a persistence seam (see `state-engine-design.md`).
    *Reopen:* first deployment where moderation must survive restarts.
 
-Spec errata candidates from the same session (notes to fold into the
-spec text, behaviour unchanged): core §6.2 — a write outside the
-writer's own subscribed prefixes gets no echo, indistinguishable from a
-silent drop (resolution: clients subscribe to what they write); core
-§6.6 — make explicit that no cursor may be persisted until the
-subscription's first catch-up frontier has been applied (implied by
-"never ahead of its persisted store", easy to miss).
+**Spec errata candidates** (from this session and the 2026-07-28
+adversarial review of `state-engine-design.md`; notes to fold into the
+spec text — behaviour changes only where marked):
+
+1. Core §6.2 — a write outside the writer's own subscribed prefixes
+   gets no echo, indistinguishable from a silent drop. Resolution:
+   clients subscribe to what they write.
+2. Core §6.2 — the silent-drop list is not exhaustive as claimed: a
+   write under a `set`/`clear` grant without the matching `read` grant
+   is *accepted* but never echoed (the read filter drops the echo).
+   Resolution: drop "exhaustively" and document write-without-read as
+   an ack-less grant shape. Related client guidance: acknowledgement
+   is per-key state confirmation, not per-op — a pre-subscribe write's
+   echo arrives compacted on the catch-up lane, or (if superseded)
+   never.
+3. Core §6.5/§6.7 — frontier semantics should be explicitly
+   **inclusive**: "you will receive nothing further *at or below* X on
+   this path" (currently "below", readable as exclusive — an
+   off-by-one that corrupts gate 3 at cursor == watermark).
+4. Core §6.6 — restate gate 4 as the obligation ("snapshot when the
+   server cannot prove the connection's effective visibility unchanged
+   since the cursor was earned") rather than mandating per-identity
+   seq tracking, which cannot capture role-definition changes for
+   disconnected identities nor reconnects bearing a different ticket.
+   The engine's mechanism is an effective-rules-hash comparison
+   (`state-engine-design.md` §5).
+5. Core §6.6 — make explicit that no cursor may be persisted until the
+   subscription's first catch-up frontier has been applied (implied by
+   "never ahead of its persisted store", easy to miss; strategy-
+   independent).
+6. Core §6.1/§6.7 — group op-count is unbounded (keys and values are
+   capped, groups are not); an over-large group is a one-writer
+   forced-resync primitive against every subscriber. Resolution: cap
+   group size (server constant, well below any delivery window);
+   over-cap groups are silently dropped whole.
+
+**Future features (recorded, not scheduled):** a per-client `debug`
+track — a diagnostics channel on which the server MAY narrate rejected
+state writes, silent drops, and gate decisions in human-readable form.
+Non-normative, never for program logic; motivated by the deliberate
+silent-failure surface above.
 
 ## Work order
 

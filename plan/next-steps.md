@@ -25,6 +25,24 @@ docs carry the decisions:
   engine, two matcher types, buffer-and-replay `clientstore`,
   persistence seam only).
 
+Same day, later: **adversarial review pass on the state engine design**
+(two independent reviews: spec-consistency + edge-case hunt; all
+surviving findings folded into the docs). Headline outcomes:
+`state-engine-design.md` revised — connection registration + actor-
+enforced write path, generation-gated writes (no writes from a swept
+generation), group-as-one-actor-event + group size cap, log sizing
+invariant + resync backoff (anti-thrash), lag-eviction firewalled from
+connection lifecycle, subscription keyed by client id with displacing
+attach, crypto-random epochs + space-id-keyed cursors, **gate 4 via
+effective-rules-hash comparison** (lazy, forgetting-is-safe cache;
+covers role-def changes while disconnected and different-ticket
+reconnects), inclusive frontier semantics pinned, invariants grown
+5 → 12 (F1–F7, L1–L5), test scenarios expanded to match. Reference
+client strategy corrected to **transient tombstones** per the settled
+preference in `state-reconnect-and-gc.md` (draft had silently reversed
+it). Errata list in `implementation-plan.md` grown to six, plus a
+recorded future feature: per-client `debug` diagnostics track.
+
 Next: step 1 of the plan (go.mod + CI, Eyevinn fork) and the `server`
 SPI design pass before step 5.
 
