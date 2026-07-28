@@ -116,6 +116,39 @@ spec text — behaviour changes only where marked):
    group size (server constant, well below any delivery window);
    over-cap groups are silently dropped whole.
 
+Found while implementing `wire` (2026-07-28):
+
+7. Core §5.1/§6.7/§7 — **byte order is never stated** for the
+   fixed-width fields (u16 length prefix and presence indexes, u64
+   timestamps, f32/i16 pose). The v1 spec pinned little-endian
+   (`lasa.md` §2.1) but the section did not carry into the v2 rewrite.
+   The implementation carries the v1 rule forward: fixed-width fields
+   little-endian; QUIC varints big-endian per RFC 9000. The spec needs
+   an endianness sentence.
+8. Core §6.6/§6.7 — the set-hash preimage ("the concatenated
+   [len varint][prefix bytes] entries") is ambiguous unless the varints
+   are pinned **minimal**: a non-minimal length encoding would hash
+   differently on each side. The implementation defines canonical =
+   deduplicated, sorted bytewise, minimal varints, and rejects
+   non-canonical subscribe messages.
+9. Core §5.1 — the redundancy-offset bits (3–5) are unspecified when
+   the redundancy bit is clear. The implementation treats a nonzero
+   offset with redundancy clear under the §5.1 discard rule (not this
+   format); the spec should state the bits are MBZ when bit 2 is
+   clear.
+
+Found while implementing `connect` (2026-07-28):
+
+10. Core §4.2 — the duplicate-id rule ("an id appearing more than once
+    across the setups list, the entities list, and the ticket's
+    entities block rejects the connection") cannot be read literally: a
+    setup's id necessarily also appears in the ticket's entities block —
+    that reference is the instantiation mechanism. The implementation
+    enforces the evident intent: no id twice within the setups list, no
+    id twice within the entities list, and no ad-hoc entity id equal to
+    any ticket-defined id (shadowing), instantiated or not. The spec
+    sentence should exempt the setup→ticket reference explicitly.
+
 **Future features (recorded, not scheduled):** a per-client `debug`
 track — a diagnostics channel on which the server MAY narrate rejected
 state writes, silent drops, and gate decisions in human-readable form.
