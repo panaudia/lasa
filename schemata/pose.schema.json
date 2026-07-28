@@ -1,0 +1,48 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://panaudia.com/schemata/pose.schema.json",
+    "title": "Panaudia Pose Schema",
+    "type": "object",
+    "properties": {
+        "position": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "x",
+                "y",
+                "z"
+            ],
+            "properties": {
+                "x": {
+                    "type": "number"
+                },
+                "y": {
+                    "type": "number"
+                },
+                "z": {
+                    "type": "number"
+                }
+            }
+        },
+        "attitude": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+                "yaw",
+                "pitch",
+                "roll"
+            ],
+            "properties": {
+                "yaw": {
+                    "type": "number"
+                },
+                "pitch": {
+                    "type": "number"
+                },
+                "roll": {
+                    "type": "number"
+                }
+            }
+        }
+    }
+}

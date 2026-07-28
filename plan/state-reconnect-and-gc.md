@@ -32,7 +32,7 @@ write-echo caveat added to `lasa2.md`.*
 
 ## The problem
 
-The state store is a distributed KV with two ops, `set` and `tomb`, each
+The state store is a distributed KV with two ops, `set` and `clear`, each
 given a monotonic server-assigned sequence id. Clients may disconnect and
 reconnect, and should be able to resume without replaying the world. But
 tombstones cannot be kept forever: a long-lived space accumulates deletions
@@ -166,11 +166,11 @@ Three matching/encoding decisions are pinned now because divergence here
 is silent:
 
 - **Prefix matching is plain string prefix.** `foo` matches `foobar` as
-  well as `foo/bar`. Keys are strings and the path structure is
-  convention (`lasa2.md`), so matching does not special-case `/` —
-  segment-aligned matching would import path semantics the store
+  well as `foo.bar`. Keys are strings and the dotted structure is
+  convention (`lasa2.md`), so matching does not special-case `.` —
+  segment-aligned matching would import structural semantics the store
   deliberately does not have. A subscriber that wants segment behaviour
-  subscribes to `foo/`.
+  subscribes to `foo.`.
 - **Canonical set encoding + named hash.** The hash is **SHA-256** over a
   canonical form: prefixes **deduplicated**, sorted, each length-prefixed
   (so `["a","bc"]` and `["ab","c"]` cannot collide, and `["a","a"]` ≡
@@ -206,7 +206,7 @@ disjointness rule.
 
 A reconnect within the window is answered with a **compacted delta**: for
 every key whose latest op has seq id > cursor, the latest op only — a `set`
-if the key lives, a `tomb` if deletion was the most recent operation. The
+if the key lives, a `clear` if deletion was the most recent operation. The
 client does not see intermediate history.
 
 This is the load-bearing choice. Delta cost is proportional to **changed
@@ -256,12 +256,12 @@ would be wrongly deleted when the snapshot finishes. The guard is needed in
 any design where live ops and a snapshot share a wire — it is not an
 artifact of multiple subscriptions.
 
-**The resurrection trap.** During the catch-up window a live `tomb` can be
+**The resurrection trap.** During the catch-up window a live `clear` can be
 followed by a late catch-up chunk — **snapshot or delta alike** —
 containing the same key at an older seq; naive application resurrects the
 deleted key. (The delta case is easy to miss: the cut H precedes every
 live op, so a delta may legitimately carry an older `set` for a key
-tombed live after the cut.) Two conforming client strategies handle this:
+cleared live after the cut.) Two conforming client strategies handle this:
 
 - **Buffer-and-replay** — buffer live ops during catch-up delivery, apply
   the catch-up payload, replay the buffer under dedup, run rule 3
@@ -269,9 +269,9 @@ tombed live after the cut.) Two conforming client strategies handle this:
   resurrection hazard exists at all; the rules are hard to implement wrong.
   Cost: the client's view of live activity is frozen for the window.
 - **Apply-live with transient tombstones** — apply live ops immediately;
-  record `(key, tomb-seq)` for **every** live `tomb` during the window —
-  including tombs for keys the client does not currently hold (the created-
-  at-980, tombed-at-1005, chunk-arrives-late case) — and drop the records
+  record `(key, clear-seq)` for **every** live `clear` during the window —
+  including clears for keys the client does not currently hold (the created-
+  at-980, cleared-at-1005, chunk-arrives-late case) — and drop the records
   at the frontier. Keeps the client fully live during a possibly
   seconds-long window; carries the subtle rule.
 
@@ -470,9 +470,9 @@ subscribe time).
 ### Lifecycle of a deletion
 
 1. `set foo=1` arrives as op 100 → store holds `foo → (value, 100)`.
-2. `tomb foo` arrives as op 200 → store holds `foo → (tombstone, 200)`.
+2. `clear foo` arrives as op 200 → store holds `foo → (tombstone, 200)`.
    The value is gone; the tombstone is retained state.
-3. Client reconnects with cursor 150 → delta includes the tomb (200) →
+3. Client reconnects with cursor 150 → delta includes the clear (200) →
    client deletes `foo`. Correct.
 4. TTL elapses; a flush discards the tombstone; the watermark advances to
    at least 200.
@@ -615,7 +615,7 @@ multi-prefix filters prove unearned.*
    applies-only-if-newer (delta and snapshot alike), and the snapshot-only
    absent-key deletion guard (local seq ≤ cut cursor). A non-normative note describes the two conforming catch-up
    strategies (buffer-and-replay; apply-live with transient tombstones —
-   recording **all** tombs during the window, including for absent keys).
+   recording **all** clears during the window, including for absent keys).
 7. The tombstone TTL is a fixed wall-clock server parameter, not a protocol
    constant (default 6 hours). The TTL and watermark are **not advertised**
    to clients; clients must not assume any particular reconnect window —
@@ -633,7 +633,7 @@ multi-prefix filters prove unearned.*
 The places where a wrong implementation stays quiet until production:
 
 - catch-up chunks — delta and snapshot alike — interleaved with live
-  `tomb`s (the resurrection trap, both client strategies);
+  `clear`s (the resurrection trap, both client strategies);
 - the absent-key deletion guard at the ≤ H frontier (keys created live
   during the window must survive replace-all);
 - frontier promises under concurrent writes (no straggler below an emitted

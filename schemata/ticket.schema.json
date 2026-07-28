@@ -1,0 +1,82 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://panaudia.com/schemata/ticket.schema.json",
+    "title": "Panaudia Ticket Schema",
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+        "iss",
+        "iat",
+        "aud",
+        "panaudia"
+    ],
+    "$defs": {
+        "key-prefix": {
+            "type": "string",
+            "pattern": "^[a-z0-9.-]{0,512}$"
+        }
+    },
+    "properties": {
+        "iss": {
+            "type": "string"
+        },
+        "jti": {
+            "type": "string"
+        },
+        "aud": {
+            "type": "string",
+            "pattern": "^[a-z0-9-]{1,128}$"
+        },
+        "exp": {
+            "type": "integer"
+        },
+        "nbf": {
+            "type": "integer"
+        },
+        "iat": {
+            "type": "integer"
+        },
+        "panaudia": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": ["client_id"],
+            "properties": {
+                "client_id": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9-]{1,128}$"
+                },
+                "roles": {
+                    "type": "array",
+                    "items": {
+                        "type": "string",
+                        "enum": ["admin", "presenter", "moderator", "producer", "audience"]
+                    }
+                },
+                "permissions": {
+                    "type": "object",
+                    "additionalProperties": false,
+                    "properties": {
+                        "set": {
+                            "type": "array",
+                            "items": {"$ref": "#/$defs/key-prefix"}
+                        },
+                        "clear": {
+                            "type": "array",
+                            "items": {"$ref": "#/$defs/key-prefix"}
+                        },
+                        "read": {
+                            "type": "array",
+                            "items": {"$ref": "#/$defs/key-prefix"}
+                        }
+                    }
+                },
+                "entities": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "entity.schema.json"
+                    }
+                }
+            }
+        }
+    }
+}

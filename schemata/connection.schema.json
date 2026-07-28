@@ -1,0 +1,37 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://panaudia.com/schemata/connection.schema.json",
+    "title": "Panaudia Connection Schema",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["client_id"],
+    "anyOf": [
+        {"required": ["entities"]},
+        {"required": ["setups"]}
+    ],
+    "dependentRequired": {
+        "setups": ["ticket"]
+    },
+    "properties": {
+        "client_id": {
+            "type": "string",
+            "pattern": "^[a-z0-9-]{1,128}$"
+        },
+        "ticket": {
+            "type": "string"
+        },
+        "entities": {
+            "type": "array",
+            "items": {
+                "$ref": "entity.schema.json"
+            }
+        },
+        "setups": {
+            "type": "array",
+            "items": {
+                "$ref": "setup.schema.json"
+            }
+        }
+    }
+}
+

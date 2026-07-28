@@ -1,0 +1,38 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://panaudia.com/schemata/setup.schema.json",
+    "title": "Panaudia Setup Schema",
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+        "id"
+    ],
+    "$defs": {
+        "attr-value": {
+            "anyOf": [
+                {"type": "boolean"},
+                {"type": "string"},
+                {"type": "number"},
+                {
+                    "type": "object",
+                    "propertyNames": {"pattern": "^[a-z0-9-]{1,128}$"},
+                    "additionalProperties": {"$ref": "#/$defs/attr-value"}
+                }
+            ]
+        }
+    },
+    "properties": {
+        "id": {
+            "type": "string",
+            "pattern": "^[a-z0-9-]{1,128}$"
+        },
+        "attrs": {
+            "type": "object",
+            "propertyNames": {"pattern": "^[a-z0-9-]{1,128}$"},
+            "additionalProperties": {"$ref": "#/$defs/attr-value"}
+        },
+        "initial-pose": {
+            "$ref": "pose.schema.json"
+        }
+    }
+}

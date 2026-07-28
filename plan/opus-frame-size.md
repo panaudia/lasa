@@ -145,3 +145,45 @@ sum the 5ms-vs-10ms gap is a little narrower than frame size alone suggests.
 For a protocol whose reason to exist is *live* head-tracked spatial audio,
 5ms is a defensible purchase — but the spec is stronger for showing the bill
 was priced.
+
+## Review outcome — decided 2026-07-24: uniform 5ms confirmed
+
+The review examined the serious alternative in its strongest form — the
+**asymmetric design**: 10ms uplink frames, 5ms mixer tick and downlink.
+What a 10ms uplink buys decomposes into three separable gains:
+
+1. **Header halving** (200→100 pkt/s, ~56 kbps of the ~112 kbps tax) —
+   codec-neutral: also available at 5ms by packing two frames per packet,
+   so this gain alone never justified the frame-size change.
+2. **SILK/hybrid modes** — the 20–40% speech coding efficiency 5ms
+   structurally forfeits. Only 10ms unlocks this.
+3. **LBRR in-band FEC** — ~25% redundancy overhead instead of the 100%
+   DIY duplication. Transparent to the packet format (it lives inside the
+   Opus payload).
+
+Worked ledger for a speech uplink at equivalent quality (rules of thumb):
+5ms CELT ≈ 32 audio + 32 dup + 112 headers + 29 pose ≈ **205 kbps**;
+10ms SILK ≈ 24 audio + 6 LBRR + 56 headers + 14 pose ≈ **100 kbps**.
+
+**Rejected on deployment-envelope grounds, not codec grounds.** The
+downlink floor is set by spatial quality — ~96 kbps for binaural to
+preserve imaging, several times that for ambisonic sinks — so any
+connection in LASA's envelope already sustains hundreds of kbps down, and
+a ~205 kbps uplink sits in the same class of connection. The 2× uplink
+saving buys nothing the envelope needs, and uniform 5ms keeps a single
+codec configuration in the conformance matrix.
+
+Also rejected with the same argument: **frame packing at 5ms** (its only
+payoff was the header halving) and **per-entity dual formats** (5ms/10ms
+as parallel uplink track names — with 5ms the only format,
+latency-critical uplinks get the tight loop by default and speech pays
+the known premium).
+
+Consequences: DIY offset duplication is confirmed as *the* redundancy
+scheme, not a stopgap (LBRR stays structurally unavailable), as
+`audio-packet-structure.md` assumes; `mono-object` is strictly one 5ms
+frame per packet, keeping the no-gaps group-id rule exact.
+
+**Reopen trigger:** an uplink-constrained-while-downlink-capable
+deployment regime becoming real — i.e. evidence that target networks
+carry the sink bitrates but choke on ~200 kbps up.

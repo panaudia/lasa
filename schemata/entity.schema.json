@@ -1,0 +1,96 @@
+{
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "$id": "https://panaudia.com/schemata/entity.schema.json",
+    "title": "Panaudia Entity Schema",
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+        "id",
+        "name"
+    ],
+    "$defs": {
+        "identifier": {
+            "type": "string",
+            "pattern": "^[a-z0-9-]{1,128}$"
+        },
+        "attr-value": {
+            "anyOf": [
+                {"type": "boolean"},
+                {"type": "string"},
+                {"type": "number"},
+                {
+                    "type": "object",
+                    "propertyNames": {"pattern": "^[a-z0-9-]{1,128}$"},
+                    "additionalProperties": {"$ref": "#/$defs/attr-value"}
+                }
+            ]
+        }
+    },
+    "properties": {
+        "id": {
+            "$ref": "#/$defs/identifier"
+        },
+        "name": {
+            "type": "string"
+        },
+        "priority": {
+            "type": "boolean"
+        },
+        "sources": {
+            "type": "array",
+            "items": {
+                "$ref": "#/$defs/identifier"
+            }
+        },
+        "sinks": {
+            "type": "array",
+            "items": {
+                "$ref": "#/$defs/identifier"
+            }
+        },
+        "attrs": {
+            "type": "object",
+            "propertyNames": {"pattern": "^[a-z0-9-]{1,128}$"},
+            "additionalProperties": {"$ref": "#/$defs/attr-value"}
+        },
+        "frame": {
+            "enum": [
+                "world",
+                "head"
+            ]
+        },
+        "dof": {
+            "enum": [
+                0,
+                3,
+                6
+            ]
+        },
+        "initial-pose":  {"$ref": "pose.schema.json"},
+        "render": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+                "gain": {
+                    "type": "number",
+                    "maximum": 3.0,
+                    "minimum": 0.0
+                },
+                "attenuation": {
+                    "type": "number",
+                    "maximum": 3.0,
+                    "minimum": 0.0
+                },
+                "size": {
+                    "type": "number",
+                    "minimum": 0.0
+                },
+                "directivity": {
+                    "type": "number",
+                    "maximum": 1.0,
+                    "minimum": 0.0
+                }
+            }
+        }
+    }
+}
