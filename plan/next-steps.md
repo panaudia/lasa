@@ -2,6 +2,55 @@
 
 *As of the 2026-07-24 session. Re-entry map, not a decision doc.*
 
+## Update 2026-07-29 — direction change: greenfield rebuild decided
+
+Step 6 (panaudia integration) was planned in full and then **not
+taken**. The session drafted two competing plans and Paul chose the
+greenfield path:
+
+- **`panaudia-integration.md`** (NOT TAKEN, kept priced) — LASA front
+  end inside existing panaudia: ten decisions D1–D10 covering the
+  fork's replace-doesn't-propagate problem, the shared-port/ALPN clash
+  (LASA's ALPN is also `moqt-16`), string-id↔UUID mapping, dual
+  state-plane bridging, and the SetRotation-per-packet bouncer flood.
+  Its two survey reports (panaudia backend contract + `core/moq`
+  incumbent + cloud-mixer constraints) remain accurate references.
+- **`greenfield-standalone.md`** (DECIDED) — three artifacts: `lasa`
+  stays the protocol only (deliberately *not* "the reference
+  implementation" — arm's length so partial conformance reads as a
+  server fact, not a spec-repo defect); new repo **`panaudia-engine`**
+  = the protocol-blind audio library (DSP packages **copied with
+  tests** out of panaudia — succession, not fork: old panaudia is
+  frozen, never migrated — plus a fresh ~1.2 kLOC orchestration
+  keeping phase barriers / slot allocator / audio-thread-confined
+  mutation / the encoder mutator surface, dropping the clustering
+  vestiges); new repo **`panaudia-server`** = lasa + panaudia-engine +
+  thin Backend adapter. The future cloud implementation is a later
+  third composition over the same two libraries.
+- Naming decided against `lasa-render`/`lasa-server` (conformance
+  implication; keeps "lasa" meaning the protocol) and against
+  `panaudia-core` ("core" overloaded by old repo's `core/` tree and
+  `lasa-core.md`).
+- Key survey facts: the mix already runs network-free
+  (`budget_m8_test.go`); the DSP stack (~6.5 kLOC) imports no
+  state/network packages, cgo fenced in four leaves; NFC bilateral is
+  post-M9, not mid-flight; 48 kHz/240 frames is a hard invariant;
+  `lasa/server` is raw-QUIC-only today (WebTransport is the gap on
+  the path to browsers).
+- Settled seam choices: ingest both `WriteOpus`+`WritePCM`; clock
+  `Process()` primary with `Run()` convenience; D1 resolved by
+  rewriting lasa's moqtransport imports to
+  `github.com/panaudia/moqtransport` and dropping the `replace`.
+  Open: SD2 policy surface, SD4 metering, SD5 subspaces, WT
+  scheduling, parity inventory (I-A…I-E).
+
+Next: Phase A — create `panaudia-engine` (copy Layer 1 with tests +
+provenance note, write Layer 2), plus the lasa-repo import rewrite
+(D1); gate = ported budget/soak tests green on dev + x86 prod box.
+Then Phase B `panaudia-server` assembly, Phase C base-profile policy
+depth (old step 7, now critical path), Phase D reach & parity
+(WebTransport, TS client, tickets, parity inventory).
+
 ## Update 2026-07-28 — implementation planned, state engine designed
 
 Refactor-structure session with the panaudia codebase in hand. Two new
@@ -43,8 +92,50 @@ preference in `state-reconnect-and-gc.md` (draft had silently reversed
 it). Errata list in `implementation-plan.md` grown to six, plus a
 recorded future feature: per-client `debug` diagnostics track.
 
-Next: step 1 of the plan (go.mod + CI, Eyevinn fork) and the `server`
-SPI design pass before step 5.
+Later the same session, implementation began (steps 1–4 done, all
+green under `-race`): go.mod + CI; the Eyevinn fork pushed as
+`github.com/panaudia/moqtransport` branch `lasa-setup-params` (three
+CLIENT_SETUP API changes + deterministic rejection, unit + real-QUIC
+e2e tests); `ident` + `wire` with golden vectors (errata 7–9 found:
+endianness gap — little-endian confirmed by Paul, set-hash minimal
+varints, offset-bits MBZ); `connect` (embedded schemas, EdDSA-only
+tickets, §4.2 resolution; erratum 10: duplicate-id wording); `state` +
+`state/clientstore` per `state-engine-design.md` — every F/L invariant
+has a named test, transient-tombstone reference client strategy,
+sim tests run both halves through the wire codec. The **server SPI is
+designed**: `server-spi.md` (raw synchronous ingress, push sinks,
+polled presence, no space id on the SPI surface).
+
+Step 5 is **done** (same session): `profile/base` (v0 subset: marker,
+name, attrs/signed-attrs, sweep scope), the `server` shell (CLIENT_SETUP
+auth → Resolve → Admit → engine; base-profile admission writes + sweep;
+raw synchronous datagram ingress via the fork's fast path; sink render
+lifecycle with alloc-free WriteFrame; presence gen/index/keyframe
+machinery; state two-lane delivery; transport-ctx teardown for L5), the
+reference `client` (config-in-setup dial, entity publishers, SyncState
+against clientstore with backoff resync, fast-path sink/presence
+routing), the stub backend, and nine e2e tests over real QUIC including
+the §4.6 rejection code at the client, reconnect-with-delta, departure
+sweep, and the hot-path allocation check. Fork grew four more commits,
+all upstreamable: datagram receive fast path + pooled send buffer,
+stream-object backpressure (drop → block; correctness for state),
+RemoteTrack.TrackAlias(), atomic subgroupCount (data race).
+
+Post-step-5 structural review (same session): decomposition seams for
+the future gateway/mixer/state split analysed and recorded in
+**`decomposition-seams.md`** — the state engine is already
+network-service-shaped (no code changes; two wrapper obligations noted:
+lease-sweep, ordered-stream for sweep-before-replacement; shapes A/B
+kept open), and the presence machinery was **extracted into the
+transport-free `presence` package** (Author/Entry/Sender, Tick-driven,
+unit-tested) so a future composer reuses it — the single-author
+constraint of the presence wire format is the recorded reason.
+
+Next: step 6 — panaudia integration (new front end implementing the
+SPI, entity → ConnectionHandler through the departure funnel, both MoQ
+servers side by side); step 7 base-profile depth; step 8 migration.
+*(Superseded 2026-07-29 — see the update above: steps 6–8 replaced by
+the greenfield rebuild.)*
 
 ## Update 2026-07-27 — rotation deferred, cheap pins landed
 

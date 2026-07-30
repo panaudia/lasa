@@ -69,9 +69,11 @@ Two guards keep the loop convergent rather than a livelock:
   positioned at its cut H and ages while the catch-up streams; the
   window must outlast the transfer (the unguarded moment between the
   attach event and the reader's first pull is the same case at t = 0);
-- client re-subscribe backoff in `clientstore`, so a client that
-  cannot keep up degrades gracefully instead of hammering
-  snapshot-sized attaches.
+- client re-subscribe backoff, so a client that cannot keep up
+  degrades gracefully instead of hammering snapshot-sized attaches.
+  (Implemented in the `client` package's SyncState loop, which owns
+  reconnect timing; `clientstore` contributes the CatchUpStalled
+  deadline signal.)
 
 Rejected alternatives, with reasons:
 

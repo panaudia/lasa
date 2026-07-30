@@ -185,9 +185,13 @@ An entity comes to exist on a connection in one of two ways:
   config. Admitted when the Space is unticketed, or when the ticket
   authorizes it (base profile: the `admin` and `presenter` roles).
 
-An id appearing more than once across the setups list, the entities
-list, and the ticket's entities block rejects the connection — ad-hoc
-entities cannot shadow signed definitions.
+Duplicate-id rules — noting that a setup's id necessarily also
+appears in the ticket's entities block; that reference is the
+instantiation mechanism, not a collision: no id may appear twice
+within the setups list; no id may appear twice within the entities
+list; and no ad-hoc entity id may equal any ticket-defined id,
+instantiated or not — ad-hoc entities cannot shadow signed
+definitions. Any violation rejects the connection.
 
 **Zero-entity connections are legal** (`entities: []`) — the
 observer/console pattern: such a connection may subscribe `presence`,
@@ -285,6 +289,11 @@ and sink tracks are continuous — 200 packets/s regardless of audio
 content. This is load-bearing: the redundancy offset (below) is
 denominated in these ids, so `offset = 3` MUST mean exactly 15 ms.
 
+**Byte order.** Every fixed-width field in this specification —
+length prefixes, presence indexes, timestamps, and the pose
+components below — is **little-endian**. QUIC varints keep their
+RFC 9000 encoding.
+
 **The flags byte.** Every audio packet begins with one flags byte.
 Bit positions are shared across formats; not every bit is meaningful
 in every format:
@@ -299,7 +308,10 @@ in every format:
 | 7 | reserved, MBZ | — |
 
 Reserved bits MUST be zero; a receiver MUST discard packets with
-unknown bits set (they are not this format).
+unknown bits set (they are not this format). The redundancy-offset
+bits 3–5 are meaningful only when bit 2 is set and are MBZ when it
+is clear; a packet with bit 2 clear and a nonzero offset falls under
+the same discard rule.
 
 **Pose encoding — 18 bytes**, byte-for-byte identical wherever a pose
 appears on the wire: `x, y, z` as IEEE-754 f32 (metres; x forward, y
@@ -412,7 +424,11 @@ to any key; `lasa.`-prefixed keys belong to the base profile.
 Every operation is assigned a **sequence id** by the store —
 monotonic incrementing integers. Operations MAY be grouped; a
 **group** is a hint that its operations should be applied together
-and provides **no consistency guarantee**. Dotted keys suggest
+and provides **no consistency guarantee**. A group's op count is
+capped by a server constant, well below any delivery window —
+without a cap, one over-large group is a forced-resync primitive
+against every subscriber. An over-cap group is silently dropped
+whole, never partially applied. Dotted keys suggest
 nesting but the store is flat: removing a parent removes nothing, and
 a leaf can share a name with another key's parent.
 
@@ -425,10 +441,20 @@ A client writes by publishing ops on its state **source** track. Ops
 carry no seq upstream; the server assigns one on acceptance. **The
 only acknowledgement is the echo**: an accepted op comes back, with
 its seq, on the client's own state sink subscription. All rejections
-are silent — no echo means it didn't happen. The silent-drop causes,
-exhaustively: the write is denied by role/permission rules; the key
-matches none of the connection's write grants; the value exceeds
-64 KiB.
+are silent — no echo means it didn't happen. The silent-drop causes:
+the write is denied by role/permission rules; the key matches none
+of the connection's write grants; the value exceeds 64 KiB; the
+group exceeds the op-count cap (§6.1).
+
+Two shapes are *accepted yet never echoed* — delivery filtering, not
+rejection: a write under a `set`/`clear` grant without the matching
+`read` grant is applied but its echo is dropped by the read filter
+(an ack-less grant shape); and a write to a key outside the
+connection's subscribed prefixes produces no echo on that
+connection. Clients SHOULD subscribe to what they write.
+Acknowledgement is **per-key state confirmation, not per-op**: a
+write made before subscribing is confirmed by the compacted
+catch-up — or, if superseded, never.
 
 ### 6.3 Subscription
 
@@ -469,7 +495,8 @@ On subscribe the server answers with exactly one of:
 The server MUST snapshot when it cannot prove a delta complete and
 MAY snapshot whenever else (e.g. when the delta would be larger).
 Every response closes with a **frontier** message — "you will receive
-nothing further below X on this path" — carrying the explicit cut
+nothing further **at or below** X on this path" (inclusive, so a
+cursor equal to the cut is fully caught up) — carrying the explicit cut
 `(epoch, seq)`, never derived from content. Frontiers are also
 emitted periodically during live operation and are how the client
 learns the epoch. Frontiers require ordered reliable transport: state
@@ -497,11 +524,15 @@ snapshot-only; absence from a delta means unchanged.
 
 The client persists one cursor: **(epoch, seq, set-hash)**,
 atomically, and never ahead of its persisted store (a client that
-does not persist its store MUST NOT persist a cursor). The **epoch**
+does not persist its store MUST NOT persist a cursor). No cursor may
+be persisted until the subscription's first catch-up frontier has
+been applied — before that point the local store is not at any
+provable cut, whatever the delivery strategy. The **epoch**
 is 8 opaque bytes, compared for equality only; the server mints a new
 epoch whenever seq-space continuity is unprovable (crash, restore,
 migration). The **set-hash** is SHA-256 over the canonical prefix-set
-encoding (deduplicated, sorted, each length-prefixed), stamped when
+encoding (deduplicated, sorted bytewise, each length-prefixed with a
+**minimal** varint — §6.7), stamped when
 the cursor is earned — a bug-catcher, not a security gate. When
 frontiers arrive on both delivery paths, persist the **maximum** seq
 per epoch.
@@ -514,15 +545,20 @@ response.
 
 The gate, server-enforced, in order: (1) epoch mismatch → snapshot;
 (2) set-hash mismatch → snapshot; (3) seq < watermark → snapshot;
-(4) seq < the identity's visibility-change seq → snapshot; (5) seq >
+(4) the server cannot prove the connection's effective visibility
+unchanged since the cursor was earned → snapshot; (5) seq >
 the server's head at the same epoch → snapshot (corrupt client
 state); (6) otherwise → delta (or snapshot at the server's
 discretion). A fresh client presents nothing and lands on snapshot
 with no special case.
 
-**Visibility changes**: the server tracks, per identity, the seq at
-which its effective visibility last changed (gate 4 covers changes
-made while disconnected). Mid-session changes are applied by
+**Visibility changes**: gate 4 states an obligation, not a
+mechanism — it must cover changes made while the identity was
+disconnected, role-definition changes affecting disconnected
+identities, and reconnects bearing a different ticket. Tracking a
+per-identity visibility-change seq is one implementation; comparing
+a hash of the connection's effective visibility rules is another.
+Mid-session changes are applied by
 terminating the state subscription via native MoQ termination — the
 session and all audio tracks stay up; the client re-subscribes and
 hits the gate. Global rule-set changes MAY be an epoch bump plus
@@ -547,7 +583,11 @@ if cursor present:
 ```
 
 The set-hash input is exactly the concatenated
-`[len varint][prefix bytes]` entries. A fresh client sends flags = 0
+`[len varint][prefix bytes]` entries. Varints in the canonical form
+MUST be **minimal** — a non-minimal length encoding would hash
+differently on each side — and a server MUST reject a subscribe
+whose prefix set is not canonical (duplicated, unsorted, or
+non-minimal). A fresh client sends flags = 0
 and omits the cursor block.
 
 **Messages**, one per MoQ object, `[type u8][body]`, QUIC varints
@@ -556,7 +596,7 @@ throughout:
 ```
 set       [1][key-len][key][value-len][value]([seq])
 clear     [2][key-len][key]([seq])
-group     [3][count][ops...]        each op a full [type][body]; groups do not nest
+group     [3][count][ops...]        each op a full [type][body]; groups do not nest; count capped (§6.1)
 frontier  [4][epoch 8][seq]
 begin     [5][kind u8]              1 = delta, 2 = snapshot
 ```
@@ -665,5 +705,7 @@ included, distinguished by the `kflags` bit above.
 | Session error codes | `0x1A5A00`–`0x1A5A07` (§4.6) |
 | Max state key length | 512 bytes |
 | Max state value length | 65 536 bytes |
+| Max ops per group | server constant (§6.1); reference implementation default 64 |
+| Fixed-width byte order | little-endian (§5.1); varints per RFC 9000 |
 | State epoch width | 8 bytes, opaque |
 | Audio frame | Opus, 48 kHz, 5 ms, one frame per packet |

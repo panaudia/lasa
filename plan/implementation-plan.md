@@ -46,14 +46,16 @@ see. Packages, in dependency order (each depends only on earlier ones):
 dependency; `server`/`client` add the Eyevinn fork + quic-go.
 
 **The server is self-contained** (decided over the thin-library
-alternative): `server` defines its own SPI — an entity-handler-style
-backend interface (accept opus frame, accept pose; provide sink
-sources) plus a stub implementation for in-repo e2e tests, on the
+alternative): `server` defines its own SPI — designed 2026-07-28 in
+**`server-spi.md`**: a `Backend` with per-entity handler objects, raw
+synchronous ingress (`WritePacket(seq, payload)` — the shell never
+buffers or decodes ingress), push sinks with per-frame sample
+timestamps, polled presence, Admit-may-block for eviction ordering,
+and no space id anywhere on the SPI surface (multi-space/SFU-gateway
+seam recorded). A stub Backend ships in-repo for e2e tests, on the
 pattern of panaudia's `moq_test_stub`. Panaudia implements the SPI by
 mapping entity-id → `panaudia_server.ConnectionHandler` (one handler
-per entity, through the existing admission funnel). **The SPI shape is
-the one remaining design pass** and is scheduled before `server` work
-starts.
+per entity, through the existing admission funnel).
 
 ## Deliberate deviations from the spec (v0)
 
@@ -80,74 +82,31 @@ Recorded so they cannot drift silently; each has a reopen trigger.
    The engine leaves a persistence seam (see `state-engine-design.md`).
    *Reopen:* first deployment where moderation must survive restarts.
 
-**Spec errata candidates** (from this session and the 2026-07-28
-adversarial review of `state-engine-design.md`; notes to fold into the
-spec text — behaviour changes only where marked):
+**Spec errata candidates — all ten folded into the spec text
+2026-07-30** (none won't-fixed; every recorded resolution was already
+implemented in code, so each fix was spec-text only). The edits, all
+in `lasa-core.md`: §6.2 out-of-scope writes + the accepted-yet-
+unechoed shapes and per-key-not-per-op acknowledgement (errata 1–2);
+§6.5 frontier made explicitly inclusive, "at or below" (3); §6.6
+gate 4 restated as the visibility obligation rather than a
+per-identity-seq mechanism (4); §6.6 no-cursor-before-first-frontier
+made explicit (5); §6.1/§6.7/§9 group op-count cap — server
+constant, over-cap dropped whole, reference default 64 (6); §5.1/§9
+endianness sentence — fixed-width little-endian, varints RFC 9000
+(7); §6.6/§6.7 set-hash canonical form pinned to minimal varints,
+non-canonical subscribes rejected (8); §5.1 redundancy-offset bits
+MBZ when bit 2 clear, discard rule otherwise (9); §4.2 duplicate-id
+rule restated with the setup→ticket reference exempted (10). The
+pre-fold wording of each erratum is in this file's git history.
 
-1. Core §6.2 — a write outside the writer's own subscribed prefixes
-   gets no echo, indistinguishable from a silent drop. Resolution:
-   clients subscribe to what they write.
-2. Core §6.2 — the silent-drop list is not exhaustive as claimed: a
-   write under a `set`/`clear` grant without the matching `read` grant
-   is *accepted* but never echoed (the read filter drops the echo).
-   Resolution: drop "exhaustively" and document write-without-read as
-   an ack-less grant shape. Related client guidance: acknowledgement
-   is per-key state confirmation, not per-op — a pre-subscribe write's
-   echo arrives compacted on the catch-up lane, or (if superseded)
-   never.
-3. Core §6.5/§6.7 — frontier semantics should be explicitly
-   **inclusive**: "you will receive nothing further *at or below* X on
-   this path" (currently "below", readable as exclusive — an
-   off-by-one that corrupts gate 3 at cursor == watermark).
-4. Core §6.6 — restate gate 4 as the obligation ("snapshot when the
-   server cannot prove the connection's effective visibility unchanged
-   since the cursor was earned") rather than mandating per-identity
-   seq tracking, which cannot capture role-definition changes for
-   disconnected identities nor reconnects bearing a different ticket.
-   The engine's mechanism is an effective-rules-hash comparison
-   (`state-engine-design.md` §5).
-5. Core §6.6 — make explicit that no cursor may be persisted until the
-   subscription's first catch-up frontier has been applied (implied by
-   "never ahead of its persisted store", easy to miss; strategy-
-   independent).
-6. Core §6.1/§6.7 — group op-count is unbounded (keys and values are
-   capped, groups are not); an over-large group is a one-writer
-   forced-resync primitive against every subscriber. Resolution: cap
-   group size (server constant, well below any delivery window);
-   over-cap groups are silently dropped whole.
-
-Found while implementing `wire` (2026-07-28):
-
-7. Core §5.1/§6.7/§7 — **byte order is never stated** for the
-   fixed-width fields (u16 length prefix and presence indexes, u64
-   timestamps, f32/i16 pose). The v1 spec pinned little-endian
-   (`lasa.md` §2.1) but the section did not carry into the v2 rewrite.
-   The implementation carries the v1 rule forward: fixed-width fields
-   little-endian; QUIC varints big-endian per RFC 9000. The spec needs
-   an endianness sentence.
-8. Core §6.6/§6.7 — the set-hash preimage ("the concatenated
-   [len varint][prefix bytes] entries") is ambiguous unless the varints
-   are pinned **minimal**: a non-minimal length encoding would hash
-   differently on each side. The implementation defines canonical =
-   deduplicated, sorted bytewise, minimal varints, and rejects
-   non-canonical subscribe messages.
-9. Core §5.1 — the redundancy-offset bits (3–5) are unspecified when
-   the redundancy bit is clear. The implementation treats a nonzero
-   offset with redundancy clear under the §5.1 discard rule (not this
-   format); the spec should state the bits are MBZ when bit 2 is
-   clear.
-
-Found while implementing `connect` (2026-07-28):
-
-10. Core §4.2 — the duplicate-id rule ("an id appearing more than once
-    across the setups list, the entities list, and the ticket's
-    entities block rejects the connection") cannot be read literally: a
-    setup's id necessarily also appears in the ticket's entities block —
-    that reference is the instantiation mechanism. The implementation
-    enforces the evident intent: no id twice within the setups list, no
-    id twice within the entities list, and no ad-hoc entity id equal to
-    any ticket-defined id (shadowing), instantiated or not. The spec
-    sentence should exempt the setup→ticket reference explicitly.
+**Open erratum candidate 11** (2026-07-30, found designing the engine's
+channel enforcement): base profile §4 resolves gain/attenuation *among*
+shared channels ("highest channel gain wins; lowest attenuation wins")
+but never says how the winning values **compose with** the entity's own
+`render.gain`/`render.attenuation` — multiply, override, or min. The
+incumbent's role-composites precedent (gain multiplies, attenuation
+overrides) is one answer, not a decision. Pin in the profile text
+before Phase C builds the per-pair record that bakes it in.
 
 **Future features (recorded, not scheduled):** a per-client `debug`
 track — a diagnostics channel on which the server MAY narrate rejected
@@ -156,6 +115,21 @@ Non-normative, never for program logic; motivated by the deliberate
 silent-failure surface above.
 
 ## Work order
+
+*Status 2026-07-28: steps 1–5 complete, all green under `-race` (see
+`next-steps.md` for the session log — the fork grew beyond step 1's
+three API changes to seven upstreamable commits, and a `presence`
+package was extracted per `decomposition-seams.md`).*
+
+*Status 2026-07-29: **direction change — steps 6–8 superseded** by the
+greenfield rebuild decided in `plan/greenfield-standalone.md`: instead
+of integrating into existing panaudia, the render core is copied into
+a new `panaudia-engine` repo and a new `panaudia-server` repo composes
+it with this module; existing panaudia is left frozen (maintenance
+mode at parity, no migration). The integration path is kept priced in
+`plan/panaudia-integration.md` (not taken). Steps 1–5 and everything
+above the work order stand unchanged; step 7's base-profile depth is
+pulled onto the new server's critical path (its Phase C).*
 
 1. **Foundations.** `go.mod` + CI in this repo. The Eyevinn v0.8.2
    fork with the three API changes (client `WithSetupParameters`,
