@@ -130,10 +130,32 @@ Servers SHOULD durably persist `lasa.space.*` across restarts.
 
 Sources and sinks are joined by named channels: **source S is audible
 to sink K iff they share at least one channel that is not muted.**
-With multiple shared channels: the highest channel gain wins; the
-lowest channel attenuation wins. An entity whose config omits
-`sources` (resp. `sinks`) gets **`["main"]`**; an explicit empty
-array means deliberately none.
+An entity whose config omits `sources` (resp. `sinks`) gets
+**`["main"]`**; an explicit empty array means deliberately none.
+
+Channels carry optional render overrides, resolved per (source, sink)
+pair. Muted channels contribute nothing to resolution. Across the
+pair's shared unmuted channels, the **highest** set channel gain wins
+and the **lowest** set channel attenuation wins; the winners then
+meet the source's own `render.*` values as follows:
+
+- **Gain composes multiplicatively**: effective gain = the source's
+  `render.gain` × the winning channel gain. An unset channel gain is
+  the identity (1.0), so the default is a no-op and entity balance
+  within a channel survives a channel-wide boost or cut. The composed
+  value may exceed the 0–3.0 range of either key; headroom policy is
+  the renderer's.
+- **Attenuation overrides when set**: if at least one shared unmuted
+  channel sets `channel.attenuation`, the lowest such value
+  **replaces** the source's `render.attenuation`; otherwise the
+  source's own value applies unchanged. Unset is the default and is
+  not a number — a channel with no attenuation set imposes no
+  distance-law policy.
+
+Because membership is pairwise, effective gain and attenuation are
+properties of the (source, sink) pair: the same source may
+legitimately render louder, or under a different distance law, to
+listeners in one channel than to listeners in another.
 
 ## 5. Moderation
 
@@ -188,8 +210,8 @@ recovery from any block state: an admin can always connect and clear.
 | `lasa.space.client.blocked.{client-id}` | Number ≥ 0 | `moderator` |
 | `lasa.space.role.blocked.{role-name}` | Number ≥ 0 | `producer` |
 | `lasa.space.channel.muted.{channel-name}` | `true` | `producer` |
-| `lasa.space.channel.gain.{channel-name}` | Number 0–3.0 | `producer` |
-| `lasa.space.channel.attenuation.{channel-name}` | Number 0–3.0 | `producer` |
+| `lasa.space.channel.gain.{channel-name}` | Number 0–3.0; absent = 1.0 (identity) | `producer` |
+| `lasa.space.channel.attenuation.{channel-name}` | Number 0–3.0; absent = no override | `producer` |
 
 ### Semantics
 
@@ -215,14 +237,15 @@ this entity is heard / hears. Defaults per §4.
 should make every effort to preserve its accuracy and quality. Do not
 set it on everything; that is self-defeating.
 
-**`render.gain`** — source gain multiplier. Absence = 1.0.
+**`render.gain`** — source gain multiplier. Absence = 1.0. Composes
+multiplicatively with channel gain, per pair (§4).
 
 **`render.attenuation`** — distance-attenuation exponent. Absence =
 2.0. 0.0 keeps the source at the same level everywhere; 1.0
 attenuates linearly; 2.0 is natural inverse-square; 3.0 falls off
 faster — useful for whispers and private communication. Fractional
 values are meaningful (2.3 can feel more natural than 2.0 in virtual
-space).
+space). May be replaced per pair by a set channel attenuation (§4).
 
 **`render.size`** — source size in metres; 0.0 (the default) is a
 point source. How renderers represent size is up to them.
@@ -261,4 +284,6 @@ listener; solo silences all but the solo'd set. Reset on reconnect
 All entities appear on the presence track; head-frame entities carry
 the krecord head-frame flag and their poses are head-relative (§6
 `frame`). The loudness byte is source loudness post-`render.gain`,
-pre-attenuation.
+pre-attenuation; channel gains, being pair-dependent (§4), are
+excluded — presence carries one loudness per source, not one per
+pair.

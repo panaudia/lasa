@@ -99,14 +99,17 @@ MBZ when bit 2 clear, discard rule otherwise (9); §4.2 duplicate-id
 rule restated with the setup→ticket reference exempted (10). The
 pre-fold wording of each erratum is in this file's git history.
 
-**Open erratum candidate 11** (2026-07-30, found designing the engine's
-channel enforcement): base profile §4 resolves gain/attenuation *among*
-shared channels ("highest channel gain wins; lowest attenuation wins")
-but never says how the winning values **compose with** the entity's own
-`render.gain`/`render.attenuation` — multiply, override, or min. The
-incumbent's role-composites precedent (gain multiplies, attenuation
-overrides) is one answer, not a decision. Pin in the profile text
-before Phase C builds the per-pair record that bakes it in.
+**Erratum 11 — resolved and folded 2026-07-30** (found designing the
+engine's channel enforcement): base profile §4 resolved gain/
+attenuation *among* shared channels but never said how the winners
+compose with the entity's own `render.*`. Decided (matching the
+incumbent's role-composites precedent): **gain composes
+multiplicatively** (unset channel gain = identity 1.0; composed value
+may exceed the per-key 0–3.0 range, headroom is the renderer's) and
+**attenuation overrides when set** (unset = no override, not a
+number). §4 rewritten accordingly; key-table defaults pinned;
+`render.*` prose cross-referenced; and the presence loudness byte
+clarified as entity-gain-only (channel gains are pair-dependent).
 
 **Future features (recorded, not scheduled):** a per-client `debug`
 track — a diagnostics channel on which the server MAY narrate rejected

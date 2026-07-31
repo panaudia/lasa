@@ -270,13 +270,15 @@ moderation, SubSpaces are symmetric — directional include is
 outside their vocabulary). **Per-channel gain/attenuation overrides
 are per-pair scalars and wait for Phase C's pair-record work** —
 the matrix grows from booleans to {include, gain, attExp} records
-then, which is also occlusion's future home — and are blocked on a
-spec gap meanwhile: the base profile never pins how channel
-gain/attenuation compose with entity `render.*` (erratum candidate
-11, recorded in implementation-plan.md). Open implementation detail
-for Phase C: whether entity `render.gain` folds into the pair
-record at recompute or stays entity-scoped and multiplies at
-encode.
+then, which is also occlusion's future home. The spec gap that
+blocked them is closed (erratum 11, resolved 2026-07-30: gain
+composes multiplicatively, unset = identity; attenuation overrides
+when set, unset = no override — profile §4 rewritten). Open
+implementation detail for Phase C: whether entity `render.gain`
+folds into the pair record at recompute or stays entity-scoped and
+multiplies at encode; and `ChannelParams` needs a real "unset"
+representation for attenuation (a plain float can't say
+no-override).
 
 **Render state and defaults.** The render-relevant state subset
 (base profile: `render.gain/attenuation/size/directivity`, channel
@@ -393,10 +395,12 @@ Layer 2 needs them — neater than contortions to avoid them — with
 every one surfaced explicitly and recorded in the engine repo's
 PROVENANCE.md, which is the ledger of divergence from the copy.
 *Status 2026-07-30:* Layer 1 copy and Layer 2 build complete, all
-green under `-race`; budget gate green on dev (gonum default
-~1.4 ms median, `-tags xsmm` ~0.6 ms — the darwin GEMM defaults
-were revised after diagnosing an Apple Accelerate signal-delivery
-corruption, PROVENANCE divergence #3); prod-box run outstanding.
+green under `-race`; budget gate green on dev (~0.55 ms median —
+an Apple Accelerate signal-delivery AMX corruption was diagnosed,
+reported to Apple, and fixed in place with a per-call signal
+shield, keeping Accelerate as the darwin default; `-tags xsmm` now
+also builds on darwin; PROVENANCE divergence #3); prod-box run
+outstanding.
 
 **Phase B — server assembly.** `panaudia-server` repo: Backend
 adapter + main; unticketed auth; e2e with the lasa reference Go

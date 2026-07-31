@@ -2,6 +2,74 @@
 
 *As of the 2026-07-24 session. Re-entry map, not a decision doc.*
 
+## Update 2026-07-30 — Phase A built; optimization program open
+
+A very full day; `plan/greenfield-standalone.md` carries the decisions,
+the engine repo's `PROVENANCE.md` carries the six Layer-1 divergences.
+In order: **ten spec errata folded** into `lasa-core.md` (list in
+`implementation-plan.md` is now a fold note). **Engine design decided**
+(recorded in greenfield-standalone.md §"Engine design decisions"):
+metres/radians native, no-wall-clock (seq + sample index only —
+protected), pose = source-side SPSC ring aligned to the jitter stream +
+sink latest-wins slot, listener-position split in the encoder,
+shape-(C) render-state boundary, channels via per-listener peer lists
+(option D). **panaudia-engine built**: Layer 1 copied (commit fd76cc8)
++ fresh Layer 2 (`engine` package), all green under `-race`, budget
+gate ~0.58 ms median on dev. **lasa D1 done**: fork tagged
+`v0.8.4-lasa.1`, lasa requires it with no replace. **Erratum 11
+resolved** (channel gain multiplies, attenuation overrides-when-set;
+profile §4 rewritten; presence loudness pinned entity-gain-only).
+**Accelerate AMX signal-corruption saga**: signal delivery mid-sgemm
+corrupts results (OS bug, reported to Apple, standalone repro in
+`gemm/accelerate-bug-repro/`); fixed by Paul's signal-shield idea
+(pthread_sigmask around the call); Accelerate stays darwin default;
+xsmm now also builds on darwin. **Optimization program (P0′–P3a)**:
+capacity sweep + per-phase stats + zero-alloc guard landed; found and
+fixed inherited hot-path allocations (variadic Contains) and lock
+traffic (thread-unsafe sets); P1 chunked dispatch tried, measured
+slower, rejected (comment in render.go); P3(a) shared-input reverb
+with zero-weight dense masking, parity-exact. 200²-with-motion:
+4.20 → 3.85 ms median, 0 allocs.
+
+**Tomorrow (finishing the optimizations):** re-profile at 200² (the
+denominator shrank — P7's true share); then decide/execute **P7**
+(scalar Go pack loops → C/SIMD, the capacity lever, guarded by the
+M-anchors) and **P3(b)** (batched reverb GEMM across listeners —
+respect brgemm-scattered.md's reopen bar; the x86 re-ask harness
+exists); opportunistic P4 (exact-zero silence gating) and P6
+(clear-elimination, needs a staleness mask). Paul's prod-box runs
+(budget + sweep, `-tags xsmm`) inform priorities. Beyond the program:
+backport decision for the incumbent (the signal shield), then Phase B
+(`panaudia-server`).
+
+*P7 outcome (2026-07-31): tried and **reverted** — a valuable
+negative result.* The 200² profile confirmed `AddInputDelayed` as the
+largest working cost (~27% of CPU), and a full stage-1 was built
+(row-indexed mixer writes, deferred per-bus batch, one-crossing C
+pack kernel, bit-exact parity — including the discovery that Go
+fuses the lerp into an FMA on arm64, so the C side must contract
+identically). But the isolated microbenchmark refuted the premise:
+**the scalar Go loop is ~8% faster than the same loop in C**
+(31.9 µs vs 34.5 µs per 200 rows) — the pack is intrinsically
+memory/dependency-bound, not a Go-codegen problem, and the sweep
+moved only ~60 µs. Reverted to keep the copy clean. **The real P7 is
+NEON/AVX SIMD**: the read index advances by 1−step per sample, so
+runs between rare index slips vectorize as two overlapping loads +
+ramping-frac FMLA — estimated 2–4× on the pack, ~0.4–0.5 ms at 200²,
+at the price of losing bit-exactness (M-anchor tolerances become the
+guard). Attempt only after the x86 prod-box sweep says the shape is
+the same there; the batch/deferral scaffold can be recovered from
+this session's history if wanted.
+
+*Decision (Paul, 2026-07-31): the per-(pair, ear) fractional-delay
+cost — the pipeline's largest single term (~1.6 ms of the 3.85 ms
+frame at 200²) — is **accepted as the price of the acoustic model**:
+near-field localisation under the bilateral renderer is vastly better
+than the previous renderer, and that quality is the product.
+Optimization of this term is welcome only in model-preserving forms
+(SIMD, fewer pairs via channels/gating/clustering); model-cheapening
+levers (shared per-pair delay, decode-side ITD) are off the table.*
+
 ## Update 2026-07-29 — direction change: greenfield rebuild decided
 
 Step 6 (panaudia integration) was planned in full and then **not
