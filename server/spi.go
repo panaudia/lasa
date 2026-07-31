@@ -2,7 +2,6 @@ package server
 
 import (
 	"github.com/panaudia/lasa/connect"
-	"github.com/panaudia/lasa/presence"
 )
 
 // Backend is the SPI the embedder implements (plan/server-spi.md). One
@@ -28,9 +27,6 @@ type Backend interface {
 	// (subscription is the only lifecycle signal). The embedder pushes
 	// frames into w until Stop. An error rejects the subscribe.
 	StartSink(entityID, format string, w SinkWriter) (SinkSession, error)
-
-	// Presence is polled at the shell's delta cadence.
-	Presence() []PresenceEntry
 }
 
 // EntityHandler receives one entity's ingress. WritePacket delivers one
@@ -59,7 +55,3 @@ type SinkWriter interface {
 // SinkSession is an active render, stopped when the last subscriber
 // unsubscribes or the serving connection ends.
 type SinkSession interface{ Stop() }
-
-// PresenceEntry is one entity's presence sample (the transport-neutral
-// aggregation currency — see package presence).
-type PresenceEntry = presence.Entry

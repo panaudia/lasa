@@ -17,7 +17,10 @@ import (
 	"github.com/panaudia/lasa/wire"
 )
 
-var errSessionEnded = errors.New("server: session ended")
+var (
+	errSessionEnded = errors.New("server: session ended")
+	errBlockedLive  = errors.New("server: blocked by moderation")
+)
 
 // connSession is one client connection: admission state, ingress routing,
 // and per-connection track plumbing.
@@ -82,6 +85,11 @@ func (cs *connSession) onClientSetup(params moqtransport.KVPList) error {
 	if rej != nil {
 		return setupRejection(rej)
 	}
+	// Moderation gate BEFORE Admit (design §7, the KickGate lesson): a
+	// blocked id's reconnect can never reach eviction logic.
+	if rej := cs.srv.gate.check(res); rej != nil {
+		return setupRejection(rej)
+	}
 	if rej := cs.srv.cfg.Backend.Admit(res); rej != nil {
 		return setupRejection(rej)
 	}
@@ -132,6 +140,7 @@ func (cs *connSession) start() error {
 		go cs.subscribeEntitySource(e.ID)
 	}
 	go cs.subscribeStateSource()
+	cs.srv.registerLive(cs) // the moderation gate's sever surface (§7)
 	return nil
 }
 
@@ -371,6 +380,7 @@ func (cs *connSession) teardown() {
 	cs.torn = true
 	cs.mu.Unlock()
 
+	cs.srv.unregisterLive(cs)
 	cs.cancel(errSessionEnded)
 	if cs.resolved != nil {
 		scopes := make([]string, len(cs.resolved.Entities))
@@ -380,6 +390,8 @@ func (cs *connSession) teardown() {
 		_ = cs.econn.Close(scopes...) // generation close + marker-first sweep (L1)
 		for _, e := range cs.resolved.Entities {
 			cs.srv.cfg.Backend.EntityLeft(cs.resolved.ClientID, e.ID)
+			// Roster hygiene the embedder cannot forget (design §6).
+			cs.srv.collector.Remove(e.ID)
 		}
 	}
 	cs.srv.sinks.dropConn(cs)

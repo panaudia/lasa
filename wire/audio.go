@@ -202,29 +202,10 @@ func appendAudioSection(buf, audio []byte, red *Redundancy) []byte {
 }
 
 func parseAudioSection(rest []byte, hasAudio bool, flags byte) ([]byte, *Redundancy, error) {
-	if flags&flagRedundancy != 0 {
-		offset := flags & offsetBits >> offsetShift
-		if offset == 0 {
-			return nil, nil, fmt.Errorf("%w: redundancy offset 0 outside 1-7", ErrMalformed)
-		}
-		if len(rest) < 2 {
-			return nil, nil, fmt.Errorf("%w: truncated length prefix", ErrMalformed)
-		}
-		n := int(binary.LittleEndian.Uint16(rest))
-		rest = rest[2:]
-		if n == 0 || len(rest) <= n {
-			return nil, nil, fmt.Errorf("%w: bad primary payload length %d of %d", ErrMalformed, n, len(rest))
-		}
-		return rest[:n], &Redundancy{Offset: offset, Audio: rest[n:]}, nil
+	var red Redundancy
+	audio, hasRed, err := parseAudioSectionInto(rest, hasAudio, flags, &red)
+	if err != nil || !hasRed {
+		return audio, nil, err
 	}
-	if !hasAudio {
-		if len(rest) != 0 {
-			return nil, nil, fmt.Errorf("%w: %d trailing bytes", ErrMalformed, len(rest))
-		}
-		return nil, nil, nil
-	}
-	if len(rest) == 0 {
-		return nil, nil, fmt.Errorf("%w: empty audio payload", ErrMalformed)
-	}
-	return rest, nil, nil
+	return audio, &red, nil
 }

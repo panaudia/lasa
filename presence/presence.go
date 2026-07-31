@@ -34,9 +34,11 @@ type Sender func(group uint64, payload []byte)
 // chunkBytes bounds one presence datagram's payload.
 const chunkBytes = 1150
 
-// Author owns the roster and authors the presence track.
+// Author consumes the Collector's sampled roster and authors the
+// presence track — subscriber #1 of the entry-level pubsub (design §6:
+// the track machinery as a subscriber adapter; Author.Tick satisfies
+// Subscriber).
 type Author struct {
-	poll       func() []Entry
 	kfInterval time.Duration
 
 	mu      sync.Mutex
@@ -52,12 +54,11 @@ type Author struct {
 	started bool
 }
 
-// NewAuthor creates an author polling poll and emitting keyframes at
-// least every kfInterval (plus immediately on membership change and new
-// subscribers).
-func NewAuthor(poll func() []Entry, kfInterval time.Duration) *Author {
+// NewAuthor creates an author emitting keyframes at least every
+// kfInterval (plus immediately on membership change and new
+// subscribers). Feed it by subscribing a.Tick to a Collector.
+func NewAuthor(kfInterval time.Duration) *Author {
 	return &Author{
-		poll:       poll,
 		kfInterval: kfInterval,
 		senders:    map[any]Sender{},
 		last:       map[string]Entry{},
@@ -80,26 +81,12 @@ func (a *Author) RemoveSender(key any) {
 	a.mu.Unlock()
 }
 
-// Run ticks at interval until stop closes. Alternative pacing (a
-// decomposed composer with its own scheduler, tests) calls Tick directly.
-func (a *Author) Run(interval time.Duration, stop <-chan struct{}) {
-	t := time.NewTicker(interval)
-	defer t.Stop()
-	for {
-		select {
-		case <-stop:
-			return
-		case now := <-t.C:
-			a.Tick(now)
-		}
-	}
-}
-
-// Tick polls the source and emits at most one round of datagrams: a
-// keyframe round on membership change, forced request, or keyframe
-// cadence; otherwise a delta of changed entries. Not safe for concurrent
-// use — one goroutine drives an Author.
-func (a *Author) Tick(now time.Time) {
+// Tick consumes one sampled roster and emits at most one round of
+// datagrams: a keyframe round on membership change, forced request, or
+// keyframe cadence; otherwise a delta of changed entries. Its signature
+// is the Collector's Subscriber; one goroutine (the Collector's pacer)
+// drives an Author.
+func (a *Author) Tick(now time.Time, entries []Entry) {
 	a.mu.Lock()
 	nSenders := len(a.senders)
 	forced := a.forced
@@ -109,7 +96,6 @@ func (a *Author) Tick(now time.Time) {
 		return
 	}
 
-	entries := a.poll()
 	byID := make(map[string]Entry, len(entries))
 	for _, e := range entries {
 		byID[e.EntityID] = e

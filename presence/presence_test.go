@@ -47,13 +47,13 @@ func (c *capture) deltas() []*wire.PresenceDelta {
 
 func TestAuthorLifecycle(t *testing.T) {
 	entries := []Entry{{EntityID: "e1", Pose: wire.Pose{X: 1}, Loudness: 5}}
-	a := NewAuthor(func() []Entry { return entries }, time.Minute)
+	a := NewAuthor(time.Minute)
 	cap := &capture{}
 	a.AddSender("sub", cap.sender())
 	now := time.Unix(1_800_000_000, 0)
 
 	// First tick: membership change (empty → e1) → keyframe, gen 0.
-	a.Tick(now)
+	a.Tick(now, entries)
 	kfs := cap.keyframes()
 	if len(kfs) != 1 || kfs[0].Gen != 0 || len(kfs[0].Records) != 1 || kfs[0].Records[0].ID != "e1" {
 		t.Fatalf("first tick: %+v", cap.packets)
@@ -61,14 +61,14 @@ func TestAuthorLifecycle(t *testing.T) {
 
 	// Unchanged entries: nothing at all.
 	n := len(cap.packets)
-	a.Tick(now.Add(20 * time.Millisecond))
+	a.Tick(now.Add(20*time.Millisecond), entries)
 	if len(cap.packets) != n {
 		t.Fatalf("unchanged tick emitted %d packets", len(cap.packets)-n)
 	}
 
 	// Pose change: a delta addressing index 0, same generation.
 	entries[0].Pose.X = 2
-	a.Tick(now.Add(40 * time.Millisecond))
+	a.Tick(now.Add(40*time.Millisecond), entries)
 	ds := cap.deltas()
 	if len(ds) != 1 || ds[0].Gen != 0 || ds[0].Records[0].Index != 0 {
 		t.Fatalf("delta: %+v", cap.packets)
@@ -76,7 +76,7 @@ func TestAuthorLifecycle(t *testing.T) {
 
 	// Membership change: gen bumps, keyframe re-lists.
 	entries = append(entries, Entry{EntityID: "e2", HeadFrame: true, Loudness: 9})
-	a.Tick(now.Add(60 * time.Millisecond))
+	a.Tick(now.Add(60*time.Millisecond), entries)
 	kfs = cap.keyframes()
 	last := kfs[len(kfs)-1]
 	if last.Gen != 1 || len(last.Records) != 2 {
@@ -88,14 +88,14 @@ func TestAuthorLifecycle(t *testing.T) {
 
 	// Keyframe cadence: past kfInterval a keyframe repeats, same gen.
 	nKF := len(cap.keyframes())
-	a.Tick(now.Add(2 * time.Minute))
+	a.Tick(now.Add(2*time.Minute), entries)
 	if len(cap.keyframes()) != nKF+1 || cap.keyframes()[nKF].Gen != 1 {
 		t.Fatal("cadence keyframe missing or wrong gen")
 	}
 
 	// Departure: gen bumps, roster shrinks (departure is keyframe absence).
 	entries = entries[1:]
-	a.Tick(now.Add(3 * time.Minute))
+	a.Tick(now.Add(3*time.Minute), entries)
 	last = cap.keyframes()[len(cap.keyframes())-1]
 	if last.Gen != 2 || len(last.Records) != 1 || last.Records[0].ID != "e2" {
 		t.Fatalf("post-departure keyframe: %+v", last)
@@ -114,10 +114,10 @@ func TestAuthorKeyframeChunking(t *testing.T) {
 	for i := 0; i < 120; i++ {
 		entries = append(entries, Entry{EntityID: fmt.Sprintf("entity-%03d", i)})
 	}
-	a := NewAuthor(func() []Entry { return entries }, time.Minute)
+	a := NewAuthor(time.Minute)
 	cap := &capture{}
 	a.AddSender("sub", cap.sender())
-	a.Tick(time.Unix(1_800_000_000, 0))
+	a.Tick(time.Unix(1_800_000_000, 0), entries)
 
 	kfs := cap.keyframes()
 	if len(kfs) < 2 {
@@ -141,10 +141,10 @@ func TestAuthorKeyframeChunking(t *testing.T) {
 }
 
 func TestAuthorEmptyRosterKeyframe(t *testing.T) {
-	a := NewAuthor(func() []Entry { return nil }, time.Minute)
+	a := NewAuthor(time.Minute)
 	cap := &capture{}
 	a.AddSender("sub", cap.sender())
-	a.Tick(time.Unix(1_800_000_000, 0))
+	a.Tick(time.Unix(1_800_000_000, 0), nil)
 	// forced flag: an empty space still answers a new subscriber with an
 	// (empty) keyframe on the cadence path.
 	kfs := cap.keyframes()
@@ -154,10 +154,9 @@ func TestAuthorEmptyRosterKeyframe(t *testing.T) {
 }
 
 func TestAuthorNoSendersNoWork(t *testing.T) {
-	polled := 0
-	a := NewAuthor(func() []Entry { polled++; return nil }, time.Minute)
-	a.Tick(time.Unix(1_800_000_000, 0))
-	if polled != 0 {
-		t.Fatal("must not poll with no subscribers")
+	a := NewAuthor(time.Minute)
+	a.Tick(time.Unix(1_800_000_000, 0), []Entry{{EntityID: "e1"}})
+	if a.started {
+		t.Fatal("must not build a roster with no subscribers")
 	}
 }

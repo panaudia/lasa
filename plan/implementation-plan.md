@@ -75,7 +75,10 @@ Recorded so they cannot drift silently; each has a reopen trigger.
    migration. *Price:* evict-on-collision is an id-hijack primitive on
    open networks — acceptable only because unticketed mode is dev-only.
    *Reopen:* before any unticketed deployment beyond closed networks;
-   revisit alongside ticketed-mode hardening.
+   revisit alongside ticketed-mode hardening. *(Related, 2026-08-01:
+   the §5 moderation gate's block-by-client-id shares exactly this
+   id-weakness under unticketed mode — a blocked client can hop ids;
+   both gain real teeth together when tickets land.)*
 3. **Memory-only state store.** The base profile SHOULDs durable
    `lasa.space.*`. v0 restarts mint a new epoch and drop everything —
    a restart can un-kick (the profile's own recorded weakness, §3).

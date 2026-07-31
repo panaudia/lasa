@@ -83,6 +83,7 @@ type Engine struct {
 	watermark uint64
 	subs      map[string]*Subscription // one per client id (invariant L4)
 	rulesSeen map[string][32]byte      // gate 4: last-attach read-rules hash per client id
+	observers []observerReg            // internal profile consumers (observer.go)
 }
 
 // New creates an engine and starts its actor.
@@ -297,9 +298,11 @@ func (e *Engine) applyGroup(ops []wire.StateMessage) {
 		case wire.Set:
 			e.store[v.Key] = &entry{value: v.Value, seq: e.seq}
 			le.key, le.value = v.Key, v.Value
+			e.notifyObservers(v.Key, v.Value, false)
 		case wire.Clear:
 			e.store[v.Key] = &entry{seq: e.seq, tombstone: true, deadAt: now}
 			le.key, le.tombstone = v.Key, true
+			e.notifyObservers(v.Key, nil, true)
 		}
 		entries = append(entries, le)
 	}

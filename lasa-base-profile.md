@@ -135,14 +135,19 @@ An entity whose config omits `sources` (resp. `sinks`) gets
 
 Channels carry optional render overrides, resolved per (source, sink)
 pair. Muted channels contribute nothing to resolution. Across the
-pair's shared unmuted channels, the **highest** set channel gain wins
-and the **lowest** set channel attenuation wins; the winners then
+pair's shared unmuted channels, the **highest** channel gain wins
+(unset counting as the identity) and the **lowest** set channel
+attenuation wins; the winners then
 meet the source's own `render.*` values as follows:
 
 - **Gain composes multiplicatively**: effective gain = the source's
   `render.gain` × the winning channel gain. An unset channel gain is
   the identity (1.0), so the default is a no-op and entity balance
-  within a channel survives a channel-wide boost or cut. The composed
+  within a channel survives a channel-wide boost or cut. When set and
+  unset gains mix across the pair's shared unmuted channels, the unset
+  channels compete with their identity value — so a policy-free shared
+  channel keeps the pair at unity and cannot be attenuated by another
+  channel's fader (most-audible-wins). The composed
   value may exceed the 0–3.0 range of either key; headroom policy is
   the renderer's.
 - **Attenuation overrides when set**: if at least one shared unmuted

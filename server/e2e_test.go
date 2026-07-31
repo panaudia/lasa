@@ -76,6 +76,7 @@ func startSpace(t *testing.T, mod func(*Config)) *testSpace {
 	if err != nil {
 		t.Fatal(err)
 	}
+	backend.attach(srv.Presence())
 	l, err := quic.ListenAddr("localhost:0", testTLS(t), &quic.Config{EnableDatagrams: true})
 	if err != nil {
 		t.Fatal(err)

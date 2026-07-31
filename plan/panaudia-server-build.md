@@ -31,54 +31,58 @@ for any engine Layer-1 divergence; Paul's git.
   `plan/server-spi.md`
 - Accept: lasa `-race` green; hotpath alloc checks unchanged
 
-### L2 — the Depacketizer (§3)
-- [ ] `server` package utility (not an SPI change): seq tracking,
+### L2 — the Depacketizer (§3) — DONE 2026-08-01
+- [x] `server` package utility (not an SPI change): seq tracking,
       flag validation/discard, `ParseMonoObject`, reorder,
       hold-on-gap, redundancy substitution, arrival-driven release
       (packet ≥ n+8 without covering copy ⇒ `Lost(n)`), stall/resume
       flush; emits `Frame(seq, pose, opus)` / `Lost(seq)` in stream
       order
-- [ ] gap-length counters (diagnostic surface; future k evidence)
-- [ ] table-driven tests: in-order fast path (zero held state,
+- [x] gap-length counters (diagnostic surface; future k evidence)
+- [x] table-driven tests: in-order fast path (zero held state,
       zero alloc), single loss + recovery at k=1..7, burst ≤ k fully
       recovered, burst > k partial, frame+carrier both lost,
       plain reorder, duplicates, stall then seq-jump resume
 - Context: design §3; `wire/audio.go` (§5.1 layouts), `server/conn.go`
 - Accept: tests green; clean-path `AllocsPerRun` = 0
 
-### L3 — the presence aggregator (§6)
-- [ ] grow `presence`: collector (per-entity latest-wins slots,
+### L3 — the presence aggregator (§6) — DONE 2026-08-01
+- [x] grow `presence`: collector (per-entity latest-wins slots,
       `Update/Remove`, loudness getter registration), cadence
       sampler (pacer — schedules, mints no time values),
       delta/keyframe builder (reuse existing wire), pubsub
       (`Subscribe/Unsubscribe`, aggregated cadence-rate stream)
-- [ ] shell's presence-track machinery becomes subscriber #1
-- [ ] SPI: remove `Backend.Presence()` + `PresenceEntry`; stub +
+- [x] shell's presence-track machinery becomes subscriber #1
+- [x] SPI: remove `Backend.Presence()` + `PresenceEntry`; stub +
       e2e presence tests move to feeding the collector
 - Context: design §6; `presence/`, `server/server.go` presence loop
 - Accept: e2e presence green via the new path; collector write path
   alloc-free
 
-### L4 — the moderation gate (§7)
-- [ ] gate in `server`: derived blocked sets (client-ids, roles) via
+### L4 — the moderation gate (§7) — DONE 2026-08-01
+- [x] gate in `server`: derived blocked sets (client-ids, roles) via
       its own state-engine observer; auth-time refusal ordered
       BEFORE `Admit`; live sever through the normal shell funnel
       (embedder sees only `EntityLeft`)
-- [ ] tests: blocked-at-connect; blocked-while-live severed;
+- [x] tests: blocked-at-connect; blocked-while-live severed;
       block-then-reconnect cannot evict a live session
 - Context: design §7 + §5; `state/` observer API, `server/server.go`
   admission path
 - Accept: tests green; unticketed id-weakness note recorded beside
   the evict-old deviation
 
-### L5 — `profile/base` consumer vocabulary (F)
-- [ ] typed parse/build + validation + defaults-as-code for:
+### L5 — `profile/base` consumer vocabulary (F) — DONE 2026-08-01
+- [x] typed parse/build + validation + defaults-as-code for:
       `render.gain/attenuation/size/directivity`, `sources.*`/
       `sinks.*`, `channel.muted/gain/attenuation`,
       `space.entity.muted`, `client.blocked`/`role.blocked`,
       `mute.*`/`solo.*`, `dof`, `frame`
-- [ ] channel composition semantics as code (gain multiplies;
+- [x] channel composition semantics as code (gain multiplies;
       attenuation overrides-when-set — profile §4)
+- Note: compose.go pins one under-specified §4 reading (mixed
+  set/unset shared gains: unset contributes the identity 1.0 as a
+  candidate, highest wins — most-audible-wins); raised with Paul
+  2026-08-01
 - Context: design F + erratum-11 resolution; `lasa-base-profile.md`
   §§4–6, `profile/base/base.go`
 - Accept: table-driven tests against the profile text

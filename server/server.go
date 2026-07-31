@@ -9,6 +9,7 @@ import (
 	"crypto/ed25519"
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/panaudia/moqtransport"
@@ -71,11 +72,59 @@ type Config struct {
 // Server is one LASA space. All space-scoped machinery lives here — a
 // future multi-space listener would hold several.
 type Server struct {
-	cfg      Config
-	engine   *state.Engine
-	sinks    *sinkManager
-	presence *presence.Author
-	closed   chan struct{}
+	cfg       Config
+	engine    *state.Engine
+	sinks     *sinkManager
+	presence  *presence.Author
+	collector *presence.Collector
+	gate      *moderationGate
+	closed    chan struct{}
+
+	// Live-session registry: the moderation gate's sever surface.
+	liveMu sync.Mutex
+	live   map[*connSession]liveInfo
+}
+
+type liveInfo struct {
+	clientID string
+	roles    []string
+}
+
+// registerLive / unregisterLive bracket a session's post-handshake
+// life; severMatching cancels every session the predicate selects
+// (teardown then runs on each session's own goroutine — the normal
+// funnel; the embedder sees only EntityLeft).
+func (s *Server) registerLive(cs *connSession) {
+	s.liveMu.Lock()
+	s.live[cs] = liveInfo{clientID: cs.resolved.ClientID, roles: cs.resolved.Roles}
+	s.liveMu.Unlock()
+	// Close the admission→registration window: a block that landed
+	// between the gate's connect check and this registration would see
+	// an empty registry and sever nothing — so re-check now that we are
+	// visible. Either ordering catches it; no window remains.
+	if s.gate.check(cs.resolved) != nil {
+		cs.cancel(errBlockedLive)
+	}
+}
+
+func (s *Server) unregisterLive(cs *connSession) {
+	s.liveMu.Lock()
+	delete(s.live, cs)
+	s.liveMu.Unlock()
+}
+
+func (s *Server) severMatching(match func(clientID string, roles []string) bool) {
+	s.liveMu.Lock()
+	var hit []*connSession
+	for cs, info := range s.live {
+		if match(info.clientID, info.roles) {
+			hit = append(hit, cs)
+		}
+	}
+	s.liveMu.Unlock()
+	for _, cs := range hit {
+		cs.cancel(errBlockedLive)
+	}
 }
 
 // New validates cfg, starts the engine and the presence loop.
@@ -103,9 +152,21 @@ func New(cfg Config) (*Server, error) {
 		engine: state.New(cfg.Engine),
 		sinks:  newSinkManager(cfg.Backend, cfg.SampleEpoch),
 		closed: make(chan struct{}),
+		live:   map[*connSession]liveInfo{},
 	}
-	s.presence = presence.NewAuthor(cfg.Backend.Presence, cfg.KeyframeInterval)
-	go s.presence.Run(cfg.PresenceInterval, s.closed)
+	gate, err := newModerationGate(s)
+	if err != nil {
+		return nil, err
+	}
+	s.gate = gate
+	// Presence, the third singleton (design §6): the embedder feeds the
+	// Collector (Register at entity join, UpdatePose from ingress); the
+	// track Author is entry-subscriber #1; the Collector's pacer drives
+	// sampling at PresenceInterval.
+	s.collector = presence.NewCollector()
+	s.presence = presence.NewAuthor(cfg.KeyframeInterval)
+	s.collector.Subscribe(s.presence, s.presence.Tick)
+	go s.collector.Run(cfg.PresenceInterval, s.closed)
 	go s.tickEngine()
 	return s, nil
 }
@@ -113,6 +174,13 @@ func New(cfg Config) (*Server, error) {
 // Engine exposes the space's state engine to the embedder (profile
 // consumption: observer subscriptions and server-authored writes).
 func (s *Server) Engine() *state.Engine { return s.engine }
+
+// Presence exposes the space's presence collector to the embedder: the
+// embedder Registers each entity (with its loudness getter) and pushes
+// poses from its ingress path; further entry-level subscribers
+// (recording, analytics, a cloud presence tier) attach here too. The
+// shell removes entities from the roster at departure.
+func (s *Server) Presence() *presence.Collector { return s.collector }
 
 // Close stops the space.
 func (s *Server) Close() {

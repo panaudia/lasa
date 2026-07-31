@@ -5,21 +5,30 @@ import (
 	"time"
 
 	"github.com/panaudia/lasa/connect"
+	"github.com/panaudia/lasa/presence"
 	"github.com/panaudia/lasa/wire"
 )
 
 // stubBackend is the in-repo test embedder (plan/server-spi.md): it
-// decodes ingress into per-entity pose/audio state, renders counter
-// frames on sinks, answers presence from applied poses, and admits
-// everything.
+// decodes ingress into per-entity pose/audio state, feeds the presence
+// collector, renders counter frames on sinks, and admits everything.
+// attach() wires the server's collector after construction.
 type stubBackend struct {
-	mu       sync.Mutex
-	entities map[string]*stubEntity
-	admitted []string
-	left     []string
+	mu        sync.Mutex
+	entities  map[string]*stubEntity
+	admitted  []string
+	left      []string
+	collector *presence.Collector
+}
+
+func (b *stubBackend) attach(c *presence.Collector) {
+	b.mu.Lock()
+	b.collector = c
+	b.mu.Unlock()
 }
 
 type stubEntity struct {
+	slot    *presence.Slot
 	mu      sync.Mutex
 	packets []stubPacket
 	pose    wire.Pose
@@ -47,6 +56,9 @@ func (b *stubBackend) Admit(res *connect.Resolved) *connect.Rejection {
 func (b *stubBackend) EntityJoined(clientID string, e connect.ResolvedEntity) (EntityHandler, error) {
 	ent := &stubEntity{arrived: make(chan struct{}, 64)}
 	b.mu.Lock()
+	if b.collector != nil {
+		ent.slot = b.collector.Register(e.ID, false, func() wire.Loudness { return 10 })
+	}
 	b.entities[e.ID] = ent
 	b.mu.Unlock()
 	return ent, nil
@@ -76,6 +88,9 @@ func (e *stubEntity) WritePacket(seq uint64, payload []byte) {
 	e.mu.Lock()
 	if pkt.Pose != nil && (!e.hasPose || seq > e.poseSeq) {
 		e.pose, e.poseSeq, e.hasPose = *pkt.Pose, seq, true
+		if e.slot != nil {
+			e.slot.UpdatePose(e.pose)
+		}
 	}
 	if pkt.Audio != nil {
 		e.packets = append(e.packets, stubPacket{seq: seq, audio: pkt.Audio})
@@ -115,15 +130,3 @@ func (b *stubBackend) StartSink(entityID, format string, w SinkWriter) (SinkSess
 type stubSession struct{ stop chan struct{} }
 
 func (s stubSession) Stop() { close(s.stop) }
-
-func (b *stubBackend) Presence() []PresenceEntry {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	out := make([]PresenceEntry, 0, len(b.entities))
-	for id, e := range b.entities {
-		e.mu.Lock()
-		out = append(out, PresenceEntry{EntityID: id, Pose: e.pose, Loudness: 10})
-		e.mu.Unlock()
-	}
-	return out
-}
