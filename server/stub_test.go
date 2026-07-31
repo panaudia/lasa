@@ -95,7 +95,7 @@ func (b *stubBackend) StartSink(entityID, format string, w SinkWriter) (SinkSess
 		t := time.NewTicker(5 * time.Millisecond)
 		defer t.Stop()
 		var i byte
-		ts := uint64(1_000_000_000)
+		var sampleTS uint64 // the embedder's sample clock (design §1)
 		frame := make([]byte, 60)
 		for {
 			select {
@@ -103,9 +103,9 @@ func (b *stubBackend) StartSink(entityID, format string, w SinkWriter) (SinkSess
 				return
 			case <-t.C:
 				frame[0] = i
-				_ = w.WriteFrame(frame, ts)
+				_ = w.WriteFrame(frame, sampleTS)
 				i++
-				ts += wire.FrameMicroseconds
+				sampleTS += wire.FrameSamples
 			}
 		}
 	}()

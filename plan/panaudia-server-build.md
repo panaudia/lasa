@@ -19,14 +19,14 @@ for any engine Layer-1 divergence; Paul's git.
 
 ## Batch L — lasa (SPI-breaking window: the stub is the only embedder)
 
-### L1 — the clock changes (§1)
-- [ ] SPI: `SinkWriter.WriteFrame(frame []byte, sampleTS uint64)`
-- [ ] `server.Config` gains `SampleEpoch func(sampleTS uint64) uint64`
+### L1 — the clock changes (§1) — DONE 2026-08-01
+- [x] SPI: `SinkWriter.WriteFrame(frame []byte, sampleTS uint64)`
+- [x] `server.Config` gains `SampleEpoch func(sampleTS uint64) uint64`
       (µs); shell egress computes §5.1 anchors from it
       (`epoch₀µs + sampleTS·10⁶/48000`); no other wall-clock use
-- [ ] C3 invariant sentence into `server-spi.md`; §5.1 note queued
+- [x] C3 invariant sentence into `server-spi.md`; §5.1 note queued
       for next spec touch
-- [ ] stub backend + e2e + hotpath allocation tests updated
+- [x] stub backend + e2e + hotpath allocation tests updated
 - Context: design §1; `server/spi.go`, `server/sink.go`,
   `plan/server-spi.md`
 - Accept: lasa `-race` green; hotpath alloc checks unchanged
@@ -85,15 +85,15 @@ for any engine Layer-1 divergence; Paul's git.
 
 ## Batch E — engine (independent of L; interleave freely)
 
-### E1 — clock, loudness, concealment (§1, §2, §3)
-- [ ] `Sink` stamps global sample time ((tick−1)×240), not per-sink
+### E1 — clock, loudness, concealment (§1, §2, §3) — DONE 2026-08-01
+- [x] `Sink` stamps global sample time ((tick−1)×240), not per-sink
       counts (§1 C4)
-- [ ] loudness moves to the render pipeline: ingest EMA removed;
+- [x] loudness moves to the render pipeline: ingest EMA removed;
       `phaseIn` computes RMS(frame)×gain → EMA (named time-constant)
       → atomic; `Source.Loudness()` signature unchanged (§2)
-- [ ] `Source.Conceal(seq)`: decoder PLC into the jitter stream,
+- [x] `Source.Conceal(seq)`: decoder PLC into the jitter stream,
       pose-ring sample accounting preserved (§3)
-- [ ] tests: post-gain loudness; Conceal emits a frame's samples and
+- [x] tests: post-gain loudness; Conceal emits a frame's samples and
       keeps pose/audio coherence; harnesses re-checked (global
       stamps stay contiguous; chirp/pose numbers re-logged)
 - Context: design §§1–3 work items; `engine/sink.go`, `source.go`,

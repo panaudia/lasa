@@ -60,11 +60,13 @@ type EntityHandler interface {
 }
 
 type SinkWriter interface {
-    // WriteFrame pushes one rendered frame; tsMicros names the frame's
-    // first sample on the embedder's sample clock (unix-epoch µs). The
+    // WriteFrame pushes one rendered frame; sampleTS names the frame's
+    // first sample on the embedder's sample clock (samples — the
+    // embedder is wall-clock-free; Config.SampleEpoch maps samples to
+    // epoch µs when the shell emits the informational anchors). The
     // shell owns seq, the on-wire ts cadence (anchor + ~1/s), and any
     // future sink-redundancy policy — the embedder never sees framing.
-    WriteFrame(frame []byte, tsMicros uint64) error
+    WriteFrame(frame []byte, sampleTS uint64) error
 }
 
 type SinkSession interface{ Stop() }
@@ -115,6 +117,15 @@ nothing.
 
 *Scope.* This contract covers the audio paths only. State and presence
 are not hot paths; normal Go style applies there.
+
+*Clocks (2026-08-01, panaudia-server-design.md §1).* Uplink carries no
+timestamps; the embedder's jitter buffer is the sole clock-domain
+coupling (fill adaptation in the sample domain, never timestamp
+comparison); no component compares stream time with system time on any
+audio path. The one authoritative clock is the embedder's render tick;
+the shell's only contact with epoch time is `Config.SampleEpoch`, whose
+value derives from that tick (epoch₀ read once at the first tick), used
+solely for the informational §5.1 sink anchors.
 
 Step 5 acceptance: the e2e suite includes allocation checks
 (`testing.AllocsPerRun`-style) on both paths so the contract is

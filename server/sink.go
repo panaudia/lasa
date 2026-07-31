@@ -13,9 +13,10 @@ import (
 // started on the first subscription and stopped when the last subscriber
 // leaves (subscription is the only signal, lasa-core.md §3.2).
 type sinkManager struct {
-	backend Backend
-	mu      sync.Mutex
-	renders map[sinkKey]*render
+	backend     Backend
+	sampleEpoch func(sampleTS uint64) uint64
+	mu          sync.Mutex
+	renders     map[sinkKey]*render
 }
 
 type sinkKey struct{ entity, format string }
@@ -31,8 +32,8 @@ type pubEntry struct {
 	owner *connSession
 }
 
-func newSinkManager(b Backend) *sinkManager {
-	return &sinkManager{backend: b, renders: map[sinkKey]*render{}}
+func newSinkManager(b Backend, sampleEpoch func(uint64) uint64) *sinkManager {
+	return &sinkManager{backend: b, sampleEpoch: sampleEpoch, renders: map[sinkKey]*render{}}
 }
 
 // ensure returns the (entity, format) render, starting it if absent.
@@ -43,7 +44,7 @@ func (m *sinkManager) ensure(entityID, format string) (*render, error) {
 	if r, ok := m.renders[key]; ok {
 		return r, nil
 	}
-	r := &render{key: key, writer: &sinkWriter{}}
+	r := &render{key: key, writer: &sinkWriter{sampleEpoch: m.sampleEpoch}}
 	r.writer.mgr, r.writer.r = m, r
 	session, err := m.backend.StartSink(entityID, format, r.writer)
 	if err != nil {
@@ -125,28 +126,35 @@ type sinkWriter struct {
 	mgr *sinkManager
 	r   *render
 
-	seq       uint64
-	scratch   []byte
-	lastTS    uint64
-	sentFirst bool
-	pubs      atomic.Pointer[[]pubEntry]
-	failed    []moqtransport.Publisher
+	seq        uint64
+	scratch    []byte
+	lastAnchor uint64
+	sentFirst  bool
+	// sampleEpoch maps the embedder's sample clock to unix-epoch µs for
+	// the informational anchors — the shell's only contact with epoch
+	// time (design §1: one clock; the value derives from the render
+	// tick, not from per-anchor wall reads). nil disables anchors.
+	sampleEpoch func(sampleTS uint64) uint64
+	pubs        atomic.Pointer[[]pubEntry]
+	failed      []moqtransport.Publisher
 }
 
-// tsCadenceMicros is the on-wire timestamp cadence: on stream start and
-// on the order of once per second (lasa-core.md §5.1).
-const tsCadenceMicros = 1_000_000
+// tsCadenceSamples is the on-wire anchor cadence in the sample domain:
+// on stream start and on the order of once per second (lasa-core.md
+// §5.1) — 48 000 samples at the 48 kHz invariant.
+const tsCadenceSamples = 48_000
 
-func (w *sinkWriter) WriteFrame(frame []byte, tsMicros uint64) error {
+func (w *sinkWriter) WriteFrame(frame []byte, sampleTS uint64) error {
 	pubs := w.pubs.Load()
 	if pubs == nil || len(*pubs) == 0 {
 		w.seq++ // sink tracks are continuous: ids advance regardless
 		return nil
 	}
 	pkt := wire.SinkPacket{Audio: frame}
-	if !w.sentFirst || tsMicros-w.lastTS >= tsCadenceMicros {
-		pkt.Timestamp = &tsMicros
-		w.lastTS = tsMicros
+	if w.sampleEpoch != nil && (!w.sentFirst || sampleTS-w.lastAnchor >= tsCadenceSamples) {
+		ts := w.sampleEpoch(sampleTS)
+		pkt.Timestamp = &ts
+		w.lastAnchor = sampleTS
 		w.sentFirst = true
 	}
 	var err error

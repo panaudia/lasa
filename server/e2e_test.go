@@ -58,9 +58,11 @@ func startSpace(t *testing.T, mod func(*Config)) *testSpace {
 	t.Helper()
 	backend := newStubBackend()
 	cfg := Config{
-		SpaceID:          "space1",
-		Backend:          backend,
-		AllowUnticketed:  true,
+		SpaceID:         "space1",
+		Backend:         backend,
+		AllowUnticketed: true,
+		// The one place epoch time exists (design §1): sample → µs.
+		SampleEpoch:      func(s uint64) uint64 { return 1_000_000_000 + s*1_000_000/48000 },
 		PresenceInterval: 20 * time.Millisecond,
 		KeyframeInterval: 200 * time.Millisecond,
 		RulesFor: func(*connect.Resolved) state.Rules {

@@ -46,11 +46,14 @@ type EntityHandler interface {
 
 // SinkWriter is the push surface for one (entity, format) render.
 // WriteFrame frames and sends synchronously on the caller's goroutine —
-// one frame per call at the 5 ms cadence, tsMicros naming the frame's
-// first sample on the embedder's sample clock (unix-epoch µs). WriteFrame
-// is not safe for concurrent use; one render loop drives one sink.
+// one frame per call at the 5 ms cadence, sampleTS naming the frame's
+// first sample on the embedder's sample clock (samples; the embedder is
+// wall-clock-free — the shell alone maps samples to epoch time via
+// Config.SampleEpoch when emitting the informational §5.1 anchors).
+// WriteFrame is not safe for concurrent use; one render loop drives one
+// sink.
 type SinkWriter interface {
-	WriteFrame(frame []byte, tsMicros uint64) error
+	WriteFrame(frame []byte, sampleTS uint64) error
 }
 
 // SinkSession is an active render, stopped when the last subscriber

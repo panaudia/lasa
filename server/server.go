@@ -29,6 +29,13 @@ type Config struct {
 	SpaceID string
 	Backend Backend
 
+	// SampleEpoch maps a sink frame's sample timestamp to unix-epoch
+	// microseconds for the informational §5.1 wire anchors. The server's
+	// one wall-clock read lives behind this closure (the embedder and
+	// the audio paths are wall-clock-free; see
+	// plan/panaudia-server-design.md §1). nil disables anchor emission.
+	SampleEpoch func(sampleTS uint64) uint64
+
 	// TicketKeys verifies tickets; AllowUnticketed admits configs without
 	// one (dev/demo/closed-network mode). At least one must be usable.
 	TicketKeys      []ed25519.PublicKey
@@ -94,7 +101,7 @@ func New(cfg Config) (*Server, error) {
 	s := &Server{
 		cfg:    cfg,
 		engine: state.New(cfg.Engine),
-		sinks:  newSinkManager(cfg.Backend),
+		sinks:  newSinkManager(cfg.Backend, cfg.SampleEpoch),
 		closed: make(chan struct{}),
 	}
 	s.presence = presence.NewAuthor(cfg.Backend.Presence, cfg.KeyframeInterval)
