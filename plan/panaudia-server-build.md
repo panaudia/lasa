@@ -256,9 +256,14 @@ for any engine Layer-1 divergence; Paul's git.
   inout.StereoCompressorLimiter, Layer 1). Measured ratios matched
   √gain × compressor slope to three digits once identified. The e2e
   drives a −25 dBFS tone to sit below the knee and asserts the
-  linear regime (gain 0.25 → ×0.5 level). Profile §6 does not pin
-  the gain domain — flag for Paul: erratum candidate ("gain
-  multiplies power") vs engine change to amplitude-domain.
+  linear regime. Gain-domain RESOLVED 2026-08-04 (Paul chose
+  amplitude): the incumbent's √gain also disagreed with the
+  render-pipeline loudness meter (RMS × gain), so power-domain was
+  internally inconsistent, not just unconventional. Engine encoder
+  now applies gain linearly (PROVENANCE #9); profile §6 pins
+  "amplitude multiplier (0.5 = −6 dB)" with a §4 echo; the e2e
+  asserts gain 0.25 → ×0.25 level. Default gain 1.0 bit-identical,
+  so latency baselines are untouched.
 - Accept MET: `TestStateDrivenRender` (ticketed producer+moderator
   console, zero-entity) — gain 0.25 halves the level and clear
   restores; space mute silences and clear restores; channel
@@ -283,15 +288,40 @@ for any engine Layer-1 divergence; Paul's git.
   reconnect is refused with §4.6 code 0x1A5A06, and clearing the key
   readmits. Suite `-race` green.
 - Accept MET: both observable from the reference client
-### S6 — acceptance instruments
-- [ ] chirp + pose harnesses ported to run through server + client
+### S6 — acceptance instruments — DONE 2026-08-04
+- [x] chirp + pose harnesses ported to run through server + client
       loop (mouth-to-ear minus network); numbers logged as the
       server baseline
-- [ ] capacity smoke at 50×50 through the full server
-- [ ] minimal stats/health surface (engine Stats, LatencySamples,
+- [x] capacity smoke at 50×50 through the full server
+- [x] minimal stats/health surface (engine Stats, LatencySamples,
       depacketizer gap counters)
-- Accept: **Phase B milestone — a native LASA client round-trip on a
-  clean server binary, instrumented**
+- Stats surface (`stats.go`): `app.stats()` snapshot — engine
+  ProcessStats + per-entity {LatencySamples, DepacketizerStats} —
+  consumed by the harnesses and logged by the binary every minute
+  while entities are live (`statsLoop`); an HTTP wrapper can reuse
+  the same snapshot when a deployment wants one.
+- Baselines now live in **`latency-baseline.md`** (the living
+  results doc: model, dated rows, re-run + client-debugging recipe;
+  added 2026-08-04 at Paul's request). Snapshot at S6 close
+  (dev Mac, loopback, `harness_test.go`, skip under -short):
+  - mouth-to-ear chirp: **30.2 ms** = 11.0 ms jitter fill + 19.2 ms
+    residual (engine-only was 18.7 = 11.0 + 7.7; the delta is the
+    client-side opus pass, transport, real-clock tick alignment).
+    400/400 frames delivered, zero loss.
+  - sink-pose (head-turn) latency: **3 frames = 15 ms** send-to-flip
+    through datagram → latest-wins slot → render → sink flight.
+  - source pose/audio coherence: skew **−2.5 ms** (engine tripwire
+    ±15 ms; server allows ±25 for real-clock feed jitter) — the
+    stream-speed identity survives the composed path.
+- Capacity smoke (`capacity_test.go`): 50 clients × own sinks, every
+  pair audible, real cadence — 400 ticks in 2.000 s (real time
+  held), per-tick render 1.08 ms of the 5 ms budget, 20 215 frames
+  ingested zero-loss, all 50 torn down through the funnel to empty.
+  Timing gates skip under -race (engine's raceEnabled convention,
+  mirrored as _test files); the 50-client concurrency still runs.
+- Accept MET: **Phase B milestone — a native LASA client round-trip
+  on a clean server binary, instrumented.** Suite green plain and
+  `-race`.
 
 ## Deferred beyond this plan
 Ambi sink formats; head-frame rendering (§4 sketch); per-pair

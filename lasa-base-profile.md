@@ -147,7 +147,8 @@ attenuation wins; the winners then
 meet the source's own `render.*` values as follows:
 
 - **Gain composes multiplicatively**: effective gain = the source's
-  `render.gain` × the winning channel gain. An unset channel gain is
+  `render.gain` × the winning channel gain (gains are amplitude
+  multipliers throughout — §6). An unset channel gain is
   the identity (1.0), so the default is a no-op and entity balance
   within a channel survives a channel-wide boost or cut. When set and
   unset gains mix across the pair's shared unmuted channels, the unset
@@ -253,7 +254,9 @@ IS the membership, and state carries no defaulting rule of its own
 should make every effort to preserve its accuracy and quality. Do not
 set it on everything; that is self-defeating.
 
-**`render.gain`** — source gain multiplier. Absence = 1.0. Composes
+**`render.gain`** — source gain multiplier. Absence = 1.0. Gain
+multiplies **amplitude** (linear voltage gain: 0.5 = −6 dB, 2.0 =
++6 dB — the conventional audio reading; pinned 2026-08-04). Composes
 multiplicatively with channel gain, per pair (§4).
 
 **`render.attenuation`** — distance-attenuation exponent. Absence =
