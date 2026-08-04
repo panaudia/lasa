@@ -13,6 +13,13 @@ type Binding struct {
 	// policy beyond the owner (the base profile grants it to the admin
 	// and producer roles, "listening through e's ears").
 	SinkAll bool
+
+	// AmbiFormats grants subscription to the ambisonic sink formats
+	// (ambi2/ambi3) — profile policy (base profile: admin and producer,
+	// the recording/broadcast/console constituency; decided 2026-08-04).
+	// Composes with the ownership rule: holding it does not by itself
+	// widen WHICH entities may be subscribed, only which formats.
+	AmbiFormats bool
 }
 
 func (b *Binding) ownsEntity(id string) bool {
@@ -38,6 +45,9 @@ func (b *Binding) MaySubscribe(n Namespace, track string) bool {
 		return true
 	case KindEntity:
 		if n.Direction != DirectionSink {
+			return false
+		}
+		if (track == TrackAmbi2 || track == TrackAmbi3) && !b.AmbiFormats {
 			return false
 		}
 		return b.SinkAll || b.ownsEntity(n.ID)

@@ -200,17 +200,35 @@ func TestE2ESinkSubscription(t *testing.T) {
 	}
 }
 
-// Wrong ambi order is rejected at subscribe (deviation 1).
+// Sink format policy (2026-08-04 rules): ambi formats are offered up
+// to AmbiOrder and need the role-derived AmbiFormats grant.
 func TestE2ESinkFormatPolicy(t *testing.T) {
-	sp := startSpace(t, func(cfg *Config) { cfg.AmbiOrder = 2 })
+	sp := startSpace(t, func(cfg *Config) {
+		cfg.AmbiOrder = 2
+		cfg.AmbiFormats = func([]string) bool { return true } // grant all: order policy under test
+	})
 	c := dial(t, sp, nil)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if _, err := c.SubscribeSink(ctx, "e1", "ambi2", func(uint64, []byte) {}); err != nil {
-		t.Fatalf("configured ambi order must be offered: %v", err)
+		t.Fatalf("offered ambi order must be subscribable with the grant: %v", err)
 	}
 	if _, err := c.SubscribeSink(ctx, "e1", "ambi3", func(uint64, []byte) {}); err == nil {
-		t.Fatal("ambi3 must be rejected when the global order is 2")
+		t.Fatal("ambi3 must be rejected when the offered order is 2")
+	}
+}
+
+// Without the AmbiFormats grant even the owner is limited to binaural.
+func TestE2EAmbiNeedsGrant(t *testing.T) {
+	sp := startSpace(t, func(cfg *Config) { cfg.AmbiOrder = 3 }) // no AmbiFormats hook: never granted
+	c := dial(t, sp, nil)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if _, err := c.SubscribeSink(ctx, "e1", "ambi3", func(uint64, []byte) {}); err == nil {
+		t.Fatal("ambi without the grant must be rejected")
+	}
+	if _, err := c.SubscribeSink(ctx, "e1", "binaural", func(uint64, []byte) {}); err != nil {
+		t.Fatalf("binaural must stay grant-free: %v", err)
 	}
 }
 

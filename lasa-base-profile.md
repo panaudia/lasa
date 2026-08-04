@@ -95,7 +95,11 @@ overrides, `clear` reverts to the documented default
 A producer may also subscribe to **any** entity's sink tracks
 ("listening through e's ears" — the privacy statement in
 `lasa-core.md` §3.1): monitoring what listeners hear is part of the
-desk.
+desk. Producers (and admins, via the union) are additionally the
+only roles that may subscribe the **ambisonic sink formats**
+(`ambi2`/`ambi3` — recording, broadcast and external processing;
+pinned 2026-08-04): all other connections are limited to
+`binaural`, whatever formats the space offers.
 
 ### admin
 
@@ -291,8 +295,15 @@ conventions per `lasa-core.md` §5.1). An entity's pose is its
 initial-pose until the first accepted packet pose supersedes it.
 
 **`mute.{other}` / `solo.{other}`** — personal, connection-scoped
-preferences of the owning entity: mute silences one entity for this
-listener; solo silences all but the solo'd set. Reset on reconnect
+preferences of the owning entity. Mute is **bidirectional** (pinned
+2026-08-04): muting an entity silences the pair both ways — the muter
+stops hearing the muted *and* stops being heard by them ("mute"
+understates this slightly, but it is what a user muting someone
+wants). Solo silences all but the solo'd set, for the soloing
+listener only, and **wins over personal mutes** in both directions —
+a solo'd entity is audible to the soloing listener even across a
+mute. The space moderation mute (§5) is above both: no solo or mute
+state makes a space-muted source audible. Reset on reconnect
 (the client rewrites what it knows).
 
 **`lasa.space.entity.muted` / `client.blocked` / `role.blocked` /

@@ -53,14 +53,21 @@ type Config struct {
 	// unticketed connections carry no roles and never qualify.
 	SinkAll func(roles []string) bool
 
+	// AmbiFormats decides whether a connection may subscribe the
+	// ambisonic sink formats — profile policy over the ticket's roles
+	// (base profile: admin and producer). nil means never.
+	AmbiFormats func(roles []string) bool
+
 	// RulesFor computes a connection's merged state-access rules — the
 	// union of its roles' expanded rules and its ticket permissions.
 	// Required.
 	RulesFor func(res *connect.Resolved) state.Rules
 
-	// AmbiOrder is the space's global ambisonic order (deviation 1 of
-	// implementation-plan.md): 0 offers binaural only; 2 or 3 offer
-	// exactly that ambi format alongside binaural.
+	// AmbiOrder is the highest ambisonic sink order the space offers
+	// (2026-08-04, superseding deviation 1's exactly-one-format rule):
+	// 0 offers binaural only; N ≥ 2 offers every ambi format UP TO N
+	// alongside binaural (ambi2 at N=2; ambi2+ambi3 at N=3). Embedders
+	// derive it from their render bus order.
 	AmbiOrder int
 
 	// Engine configures the state engine.
@@ -278,16 +285,16 @@ func (s *Server) verifyTicket(cfg *connect.ConnectionConfig) (*connect.Ticket, *
 	return v.Verify(cfg.Ticket)
 }
 
-// sinkFormatOffered applies deviation 1: binaural always; the configured
-// ambi order when set.
+// sinkFormatOffered: binaural always; ambi formats up to the configured
+// AmbiOrder (the derived-offering rule that superseded deviation 1).
 func (s *Server) sinkFormatOffered(format string) bool {
 	switch format {
 	case "binaural":
 		return true
 	case "ambi2":
-		return s.cfg.AmbiOrder == 2
+		return s.cfg.AmbiOrder >= 2
 	case "ambi3":
-		return s.cfg.AmbiOrder == 3
+		return s.cfg.AmbiOrder >= 3
 	}
 	return false
 }

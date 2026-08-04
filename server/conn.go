@@ -105,10 +105,11 @@ func (cs *connSession) onClientSetup(params moqtransport.KVPList) error {
 	cs.resolved = res
 	cs.econn = econn
 	cs.binding = &ident.Binding{
-		Space:    cs.srv.cfg.SpaceID,
-		Client:   res.ClientID,
-		Entities: entities,
-		SinkAll:  cs.srv.cfg.SinkAll != nil && cs.srv.cfg.SinkAll(res.Roles),
+		Space:       cs.srv.cfg.SpaceID,
+		Client:      res.ClientID,
+		Entities:    entities,
+		SinkAll:     cs.srv.cfg.SinkAll != nil && cs.srv.cfg.SinkAll(res.Roles),
+		AmbiFormats: cs.srv.cfg.AmbiFormats != nil && cs.srv.cfg.AmbiFormats(res.Roles),
 	}
 	return nil
 }

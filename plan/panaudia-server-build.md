@@ -323,7 +323,154 @@ for any engine Layer-1 divergence; Paul's git.
   on a clean server binary, instrumented.** Suite green plain and
   `-race`.
 
+## Post-milestone
+
+### P1 — the pair record (Phase C completion) — DONE 2026-08-04
+- [x] engine Layer 2 (`channels.go`): the audibility matrix grown to
+      a full pair record — `pairGain`/`pairAttExp` slot matrices
+      resolved per (source, listener) in `recomputeAudible` (§4:
+      highest channel gain wins, unset = identity; lowest SET
+      attenuation replaces the source's exponent, nil = no override —
+      `ChannelParams.Attenuation` is now `*float64`)
+- [x] personal mute/solo in the same resolution, id-keyed
+      (`SetPersonalMute`/`SetPersonalSolo`): semantics decided with
+      Paul 2026-08-04 — mute is BIDIRECTIONAL (either side muting
+      silences the pair both ways; the incumbent's behaviour, kept as
+      the desirable one), solo restricts the listener to its set and
+      wins over personal mutes, space moderation mute above all (the
+      incumbent's solo-bypasses-space-mute ordering is retired — its
+      encoder `Mutes`/`Solos` sets stay empty). Owner's entries die
+      at removeEntity (required: the marker-first sweep means the
+      wiring never relays swept mute clears); entries targeting a
+      departed id persist and re-bite on rejoin. §6 erratum pins all
+      of this.
+- [x] Layer 1 (PROVENANCE #10): listener encoders carry slot-indexed
+      pair rows (`SetPairScalars`); the three weight sites read them —
+      one indexed load per pair, nil = classic per-source values,
+      copied suites unchanged
+- [x] wiring: PersonalMute/PersonalSolo events → mixer mutators;
+      ChannelAttenuation nil passes through end to end; parity test
+      updated (unset = nil)
+- Accept MET: engine unit tests (winner resolution incl. mixed
+  set/unset and muted-channel exclusion; bidirectional mute; solo
+  precedence; space-mute-beats-solo; per-pair audible ratio ~4 through
+  the real render) + `TestPairSemanticsE2E` (channel gain ×2, flat
+  distance law at 2 m, both mute directions, solo-beats-mute — all
+  via real clients' state writes). All three repos `-race` green.
+
+### P2 — size/directivity rendered (engine) — DONE 2026-08-04
+- [x] all four items of `panaudia-engine/plan/size-and-directivity.md`
+      (scope confirmed by Paul; occlusion out, spectral directivity
+      deferred): broadband cardioid directivity (source forward from
+      pose attitude, world-frame law), per-order spherical-cap spread
+      weighting (energy renorm capped +6 dB — the tuning knob),
+      surface-distance clamp (size = diffuseness; clamped d also
+      gates NFC), size term in the wet/dry split
+- No lasa or server code changes — S4's wiring already forwarded
+  Size/Directivity; the server e2e (`TestPairSemanticsE2E`) now
+  asserts the cardioid null at 90°, the half-directivity band, and
+  the enveloping interior via producer state writes. Engine:
+  PROVENANCE #11; alloc guard green; budget gate unchanged (547 µs
+  median at 50×50). Addendum (same day, Paul's asks): neutral
+  size/directivity are structurally GATED no-ops (per-pair extent
+  gate in both render paths), and `TestExtentBudgetAtScale` prices
+  the all-on 50×50 scene: +3.5% median (~19 µs) vs the unchanged
+  neutral baseline, 15% tripwire. Open: the listening/tuning pass
+  (Paul's ears).
+
+### P3 — bus-order range opened to 2–5, order 1 dropped — DONE 2026-08-04
+- Groundwork for the ambi-formats decision (Paul: "look at the order
+  question first"). Audit found every stage below the validation line
+  already order-generic (SH evaluators carry dedicated order-4/5
+  paths; pack/GEMM sized by ChannelCount; convolver derives its bank
+  from channel count; default HRTF set carries banks [2 3 4 5];
+  extent spread table reaches 5; reverb/NFC order-independent). The
+  only changes: `engine.New` validates 2–5 (order 1 deliberately
+  unsupported — never wanted, and no order-1 HRTF bank exists),
+  comments/README updated.
+- `TestBinauralAllOrders`: full binaural path (SH encode → pack →
+  GEMM → order's HRTF bank → convolution → opus) renders a
+  hard-left tone with correct lateralisation at orders 2–5;
+  `TestOrderOneRejected` pins the drop.
+- `TestOrderBudgetSweep` (50-person budget scene, dev Mac):
+  order 2 = 505 µs, 3 = 541 µs, 4 = 614 µs, 5 = 723 µs median —
+  channels ×2.25 from order 3→5 costs only ×1.34 (GEMM efficiency;
+  the non-order stages dominate). All far inside the 5 ms budget.
+- Not a Layer-1 change (validation + docs only; no PROVENANCE entry).
+
+### P4 — ambisonic sink formats — DONE 2026-08-05
+- Design (settled with Paul across the order/roles/normalisation
+  discussions; supersedes deviation 1):
+  1. ONE order knob — `PANAUDIA_ORDER` (2–5). Offering DERIVED:
+     `binaural` always, `ambi2` always, `ambi3` when order ≥ 3.
+     lasa `Config.AmbiOrder` semantics become "ambi formats up to
+     this order"; panaudia-server passes min(Order, 3).
+  2. Ambi subscription is ROLE-GATED: admin + producer (the
+     recording/broadcast/console constituency), a third binding
+     grant mirroring SinkAll (`base.AmbiPermitted`; §2 sentence;
+     `Config.AmbiFormats` hook; `Binding.AmbiFormats` checked for
+     ambi tracks in MaySubscribe). Audience gets binaural only —
+     the client-side-rotation path for listeners belongs to the
+     deferred bilateral2/3 work. Consequence noted: manual ambi
+     testing in a dev space needs a producer ticket → mint CLI
+     priority nudge.
+  3. Engine renders ONE classic (head-centred, WORLD-frame — no
+     head rotation, decision 10; no NFC/ITD) render per
+     ambi-subscribed entity at bus order; per-format TRUNCATION
+     (exact for point sources — SH channels are independent; noted
+     caveat: spread-weight energy normalisation is computed at bus
+     order, so sized sources sit a hair quieter in truncated
+     outputs) + one opus multistream encode per format (9/16
+     uncoupled mono streams, ACN/SN3D per the pinned packet doc).
+  4. Normalisation: N3D internal (verified already true by
+     construction — orthonormal SH constants × SQRT_4_PI ≡ N3D;
+     channel-0 weight 1.0, order-1 √3), SN3D at the sink boundary
+     via the constant per-order divide √(2l+1), folded into the
+     encode copy.
+  5. Binaural and ambi renders may run SIMULTANEOUSLY per entity
+     (engine grows a classic second encoder per ambi-tapped
+     entity; the shell's (entity, format) render model already
+     assumes this).
+  6. `ambi4`/`ambi5` deferred-not-offered (bandwidth 25/36
+     streams; wire consumers are head-centred so order genuinely
+     pays there, but the listening path belongs to bilateral2/3 —
+     additive later under format-in-name).
+  7. Product note (Paul): offering order-5 *binaural* is worth it
+     for positioning alone (+34% render cost) — recorded in
+     head-rotation-and-sink-formats.md.
+- [x] lasa: `Binding.AmbiFormats` checked in MaySubscribe for ambi
+      tracks (grant does not widen entity reach); `Config.AmbiFormats`
+      hook; `AmbiOrder` re-specced as "formats up to" with ≥
+      offering; `base.AmbiPermitted` (admin/producer, travels with
+      SinkAll); §2 producer-paragraph sentence; authz/e2e tests
+      updated to the new policy
+- [x] engine: `inout/multistream.go` (PROVENANCE #12 — cgo opus
+      multistream, alloc-free encode) + `engine/ambisink.go`:
+      AddAmbiSink/RemoveAmbiSink, one shared `NewClassicEncoder`
+      per ambi-tapped entity (same uid: self-exclusion preserved;
+      pair record + extent shared; world-frame — listener rotation
+      never applied, position honoured), per-order truncation +
+      N3D→SN3D (`1/√(2l+1)`) + interleave + multistream encode in
+      the Out phase; full lifecycle (registry accounting, Close,
+      removeEntity conditions). Tests: SN3D discriminator (X/W ≈ 1
+      dead-ahead — √3 would mean N3D leaked), world-frame rule
+      (yaw π must not rotate the field), binaural+ambi
+      simultaneity, lifecycle, zero-alloc Process with ambi active
+- [x] server: backend StartSink routes binaural/ambi2/ambi3 (the
+      COW pose fan-out list replaced the single sink pointer —
+      every attached render half gets ingress poses); EntityLeft
+      removes ambi sinks as backstop; `PANAUDIA_AMBI_ORDER` env
+      REMOVED (offering derived: AmbiOrder = min(Order, 3));
+      `AmbiFormats: base.AmbiPermitted` wired
+- Accept MET: `TestAmbiE2E` — producer taps e-listen's ambi3 while
+  e-listen's own binaural keeps flowing; audience refused even its
+  own ambi; decoded field carries the scene (W energetic, X/W ≈ 1
+  SN3D, Y ≈ 0 for the dead-ahead source). `TestAmbiOfferingByOrder`
+  — order-2 space offers ambi2, refuses ambi3. All three repos
+  `-race` green.
+
 ## Deferred beyond this plan
-Ambi sink formats; head-frame rendering (§4 sketch); per-pair
-channel gain/attenuation (pair record); tickets; WebTransport; TS
-client (Phase D); the SIMD-P7/P3(b) capacity program.
+Ambi sink formats; head-frame rendering (§4 sketch); WebTransport;
+TS client (Phase D); the SIMD-P7/P3(b) capacity program; occlusion
+(cheap-render recipe recorded in size-and-directivity.md); spectral
+directivity.

@@ -15,8 +15,11 @@ func TestAuthzMatrix(t *testing.T) {
 		want  bool
 	}{
 		{"own entity sink binaural", EntityNamespace("s", "e1", DirectionSink), TrackBinaural, true},
-		{"own entity sink ambi2", EntityNamespace("s", "e2", DirectionSink), TrackAmbi2, true},
-		{"own entity sink ambi3", EntityNamespace("s", "e1", DirectionSink), TrackAmbi3, true},
+		// Ambi formats need their own grant (2026-08-04) — refused even
+		// for the owner on an ungranted binding; TestAmbiFormatsGrant
+		// covers the granted side.
+		{"own entity sink ambi2 ungranted", EntityNamespace("s", "e2", DirectionSink), TrackAmbi2, false},
+		{"own entity sink ambi3 ungranted", EntityNamespace("s", "e1", DirectionSink), TrackAmbi3, false},
 		{"other entity sink", EntityNamespace("s", "e3", DirectionSink), TrackBinaural, false},
 		{"own entity source", EntityNamespace("s", "e1", DirectionSource), TrackMonoObject, false},
 		{"own client state sink", ClientNamespace("s", "c1", DirectionSink), TrackState, true},
@@ -66,6 +69,35 @@ func TestSinkAllGrant(t *testing.T) {
 	}
 	if b.MaySubscribe(ClientNamespace("s", "c2", DirectionSink), TrackState) {
 		t.Error("SinkAll must not grant other clients' state sinks")
+	}
+}
+
+// TestAmbiFormatsGrant: the ambisonic sink formats need their own grant
+// (base profile: admin/producer, 2026-08-04) on top of the ownership
+// rule — and the grant does not widen which entities may be subscribed.
+func TestAmbiFormatsGrant(t *testing.T) {
+	own := &Binding{Space: "s", Client: "c1", Entities: []string{"e1"}}
+	if own.MaySubscribe(EntityNamespace("s", "e1", DirectionSink), TrackAmbi2) {
+		t.Error("ambi2 without the grant must be refused, even for the owner")
+	}
+	if own.MaySubscribe(EntityNamespace("s", "e1", DirectionSink), TrackAmbi3) {
+		t.Error("ambi3 without the grant must be refused, even for the owner")
+	}
+	if !own.MaySubscribe(EntityNamespace("s", "e1", DirectionSink), TrackBinaural) {
+		t.Error("binaural must not need the ambi grant")
+	}
+
+	granted := &Binding{Space: "s", Client: "c1", Entities: []string{"e1"}, AmbiFormats: true}
+	if !granted.MaySubscribe(EntityNamespace("s", "e1", DirectionSink), TrackAmbi3) {
+		t.Error("granted owner must subscribe own ambi3")
+	}
+	if granted.MaySubscribe(EntityNamespace("s", "e9", DirectionSink), TrackAmbi3) {
+		t.Error("the ambi grant alone must not widen entity reach (no SinkAll)")
+	}
+
+	full := &Binding{Space: "s", Client: "c1", SinkAll: true, AmbiFormats: true}
+	if !full.MaySubscribe(EntityNamespace("s", "e9", DirectionSink), TrackAmbi2) {
+		t.Error("SinkAll+AmbiFormats must subscribe any entity's ambi")
 	}
 }
 

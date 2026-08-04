@@ -162,6 +162,77 @@ head-centered expansion doesn't. So the live matchup is **bilateral-2
 (18ch) vs head-centered ambi3 (16ch) at ~equal channel count**, and
 bilateral-2 may win on the things that matter here.
 
+## Ambisonic order vs binaural perception — added 2026-08-04
+
+Research pass (Paul's question: is 5th order much better than 3rd,
+and does the bilateral approach change the answer?), folded in here
+because it reprices several rows above. Companion engine work landed
+the same day: bus orders 2–5 are all verified end-to-end
+(`TestBinauralAllOrders`; order 1 dropped) and priced
+(`TestOrderBudgetSweep`, dev Mac, 50 people: 505/541/614/723 µs
+median for orders 2/3/4/5 — sublinear in channels; CPU is not the
+binding constraint).
+
+**Head-centred: 3→5 is real but past the knee.** Order-N
+reconstruction is accurate at the ear positions only to ≈ N × 600 Hz
+(ears sit ~8.7 cm off-centre): order 3 covers the ITD band
+(< 1.5 kHz), order 5 reaches ~3.1 kHz, and *neither* approaches the
+pinna-cue band — perceptual transparency needs on the order of
+**N ≈ 20** (arXiv 2412.05015). The perceptual studies match:
+localisation improves only "minor[ly]" from 3rd to 5th (both vastly
+better than 1st; RG 347336527, RG 253644795); source sharpness keeps
+improving with diminishing returns; and with **MagLS-family decoding
+the timbral MUSHRA differences across orders 1–5 were minimal**
+(Huddersfield, pure.hud.ac.uk) — magnitude fitting buys back most of
+what truncation costs. The genuinely order-sensitive head-centred
+weakness remains rotation stability (the Ben-Hur 2019 ripple data
+above).
+
+**Bilateral changes the answer.** The HRTF's high effective SH order
+is mostly its ITD phase; bilateral + ear-aligned HRTFs remove exactly
+that from the SH machinery's job (Ben-Hur, Alon, Mehra & Rafaely
+2021, IEEE/ACM TASLP — "substantial improvement … even with SH as
+low as first order"). The engine implements the full recipe — two
+ear-centred expansions, explicit Woodworth ITD, per-ear parallax,
+per-ear NFC, **BiMagLS** filters (`thk-ku100-bimagls-v1`; Engel et
+al. 2022 identify BiMagLS as the right preprocessing for bilateral).
+Consequences: (1) much of what head-centred 5 buys over 3 — ITD-band
+accuracy at the off-centre ears — bilateral gets exactly at any
+order, so the remaining 3→5 delta is finer magnitude-HRTF detail
+(sharpness, dense-scene separation): real, second-tier, settle by
+ear (`PANAUDIA_ORDER=5` is a cheap A/B now); (2) the rotation-ripple
+concern is blunted — ITD is recomputed per frame from geometry,
+never reconstructed from a truncated field, and BiMagLS smooths the
+magnitude ripple; (3) near-field quality is order-independent for
+us — explicit models, not field reconstruction.
+
+**A product note beside the psychoacoustics (Paul, 2026-08-04):**
+there is an advantage to *offering* 5th order for the binaural path
+even though 3rd is probably more than good enough — "5th-order"
+sounds more attractive. Perceived quality in the market sense is a
+real axis the studies above don't measure, and the measured cost is
+modest (+34% render median, order 3→5). The order knob already
+allows it; this note records that running spaces at 5 may be worth
+it for positioning alone.
+
+**The asymmetry that matters for this doc's decision:** the
+bilateral advantage lives ONLY in the server's binaural path. Raw
+`ambi2`/`ambi3` sink formats are head-centred — their consumers face
+the classic order-limited story above (unless the client itself
+decodes MagLS-style). So "our binaural at order 3 ≈ head-centred
+order 5" does NOT transfer to the wire formats, and the order
+question must be asked separately per row of the candidates table.
+It also sharpens the earlier lean: the formats that carry the
+bilateral advantage to clients are the deferred `bilateral2/3`, not
+higher-order head-centred ambi.
+
+References for this section: Ben-Hur et al. 2021
+(doi 10.1109/TASLP.2021.3055038); Engel, Goodman & Picinali 2022
+(Acta Acustica, aacus210029); Armstrong et al., Huddersfield MUSHRA
+(orders 1–5, magLS); arXiv 2412.05015 (transparency ≈ order 20);
+RG 347336527 (VR localisation by order); RG 253644795 (FOA/HOA
+localisation); JASA 143:3616 (time-aligned HRIR rendering).
+
 ## Server cost (may bind before bandwidth)
 
 Per-listener work:

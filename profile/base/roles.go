@@ -34,6 +34,14 @@ func SinkAll(roles []string) bool {
 	return hasRole(roles, RoleAdmin) || hasRole(roles, RoleProducer)
 }
 
+// AmbiPermitted reports the §2 ambisonic-formats grant: admin and
+// producer — the recording/broadcast/console constituency — may
+// subscribe the ambi sink formats (decided 2026-08-04). Audience gets
+// binaural only.
+func AmbiPermitted(roles []string) bool {
+	return hasRole(roles, RoleAdmin) || hasRole(roles, RoleProducer)
+}
+
 // RulesFor expands a resolved connection's roles into its effective
 // state-access rules: the union of its roles' §2 rules and its ticket's
 // explicit permissions grants. Every connection carries audience;

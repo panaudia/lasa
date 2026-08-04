@@ -196,5 +196,10 @@ func TestSinkAll(t *testing.T) {
 		if got := SinkAll(c.roles); got != c.want {
 			t.Errorf("SinkAll(%v) = %v, want %v", c.roles, got, c.want)
 		}
+		// AmbiPermitted travels with SinkAll in the base profile (§2):
+		// same admin/producer constituency.
+		if got := AmbiPermitted(c.roles); got != c.want {
+			t.Errorf("AmbiPermitted(%v) = %v, want %v", c.roles, got, c.want)
+		}
 	}
 }
