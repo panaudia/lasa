@@ -10,13 +10,18 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"net"
+	"net/url"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/panaudia/moqtransport"
 	"github.com/panaudia/moqtransport/quicmoq"
+	"github.com/panaudia/moqtransport/webtransportmoq"
 	"github.com/quic-go/quic-go"
+	"github.com/quic-go/quic-go/http3"
+	webtransport "github.com/quic-go/webtransport-go"
 
 	"github.com/panaudia/lasa/connect"
 	"github.com/panaudia/lasa/ident"
@@ -58,19 +63,65 @@ type Client struct {
 	routes atomic.Pointer[map[uint64]func(seq uint64, payload []byte)]
 }
 
-// Dial connects and completes the LASA handshake. A server rejection
-// surfaces as a *quic.ApplicationError carrying the §4.6 code.
+// Dial connects over raw QUIC and completes the LASA handshake. A
+// server rejection surfaces as a *quic.ApplicationError carrying the
+// §4.6 code.
 func Dial(ctx context.Context, addr string, cfg Config) (*Client, error) {
-	raw, err := configJSON(cfg)
-	if err != nil {
-		return nil, err
-	}
 	tlsConf := cfg.TLS.Clone()
 	if tlsConf == nil {
 		tlsConf = &tls.Config{}
 	}
 	tlsConf.NextProtos = []string{ALPN}
 	conn, err := quic.DialAddr(ctx, addr, tlsConf, &quic.Config{EnableDatagrams: true})
+	if err != nil {
+		return nil, err
+	}
+	return start(ctx, cfg, quicmoq.NewClient(conn))
+}
+
+// DialWebTransport connects over WebTransport — the browser transport;
+// this Go side exists for tests and tooling ("identical over
+// WebTransport and raw QUIC", lasa-core §4.1). urlStr is the upgrade
+// endpoint, e.g. https://host:4443/lasa.
+func DialWebTransport(ctx context.Context, urlStr string, cfg Config) (*Client, error) {
+	u, err := url.Parse(urlStr)
+	if err != nil {
+		return nil, err
+	}
+	host := u.Host
+	if u.Port() == "" {
+		host = net.JoinHostPort(u.Hostname(), "443")
+	}
+	tlsConf := cfg.TLS.Clone()
+	if tlsConf == nil {
+		tlsConf = &tls.Config{}
+	}
+	tlsConf.NextProtos = []string{http3.NextProtoH3}
+	qconn, err := quic.DialAddr(ctx, host, tlsConf, &quic.Config{
+		EnableDatagrams:                  true,
+		EnableStreamResetPartialDelivery: true, // WebTransport requirement
+	})
+	if err != nil {
+		return nil, err
+	}
+	t := &webtransport.Transport{ApplicationProtocols: []string{ALPN}}
+	cc, err := t.NewClientConn(qconn)
+	if err != nil {
+		_ = qconn.CloseWithError(0, "webtransport setup failed")
+		return nil, err
+	}
+	_, sess, err := cc.Dial(ctx, urlStr, nil)
+	if err != nil {
+		_ = qconn.CloseWithError(0, "webtransport dial failed")
+		return nil, err
+	}
+	return start(ctx, cfg, webtransportmoq.NewClient(sess))
+}
+
+// start runs the MoQ session over an established transport connection —
+// the shared tail of both Dial variants.
+func start(ctx context.Context, cfg Config, mconn moqtransport.Connection) (*Client, error) {
+	raw, err := configJSON(cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -93,7 +144,7 @@ func Dial(ctx context.Context, addr string, cfg Config) (*Client, error) {
 			_ = rw.Accept()
 		}),
 	}
-	if err := c.session.RunContext(ctx, quicmoq.NewClient(conn)); err != nil {
+	if err := c.session.RunContext(ctx, mconn); err != nil {
 		cancel()
 		return nil, err
 	}

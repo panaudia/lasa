@@ -498,6 +498,90 @@ for any engine Layer-1 divergence; Paul's git.
   power ~0 in the tapped ambi2 field). All three repos `-race`
   green.
 
+### P6 — Phase D: WebTransport + TypeScript client (design agreed 2026-08-05)
+- Decisions (Paul): adapt the EXISTING in-house draft-16 TS codec
+  (tested, golden-fixtured, worker-integrated; its Eyevinn deltas
+  are documented) — moqtail-ts (also draft-16, in-tree) serves as
+  interop reference, not dependency. New SDK = SIBLING package
+  beside `panaudia-client/sdks/typescript` importing nothing from
+  the old one (portable core COPIED, provenance-style: jitter
+  buffer, rings, worklets, datagram router, coordinates,
+  topic-tree views, verify-* release gates; the audio hot path
+  ports by swapping the two codec seam calls). Old SDK keeps
+  serving old panaudia. Sibling demo page in
+  `panaudia-client/examples` when D4 arrives.
+- [x] D1 — WebTransport in the server — DONE 2026-08-05: ALPN-routed
+      shared UDP 4443 (`h3` → webtransport-go v0.12 upgrade at
+      `/lasa` (`wt.go`) → `webtransportmoq` → the existing
+      `ServeConn`; `moqt-16` → the raw-QUIC path; the serve loop
+      moved from lasa's ServeQUIC into panaudia-server); dev cert
+      now ECDSA P-256/13-day with serverCertificateHashes logged at
+      boot (real certs unchanged, both ALPNs always offered);
+      listener + both dialers set EnableStreamResetPartialDelivery
+      (WT requirement). lasa `client.DialWebTransport` added (Dial
+      refactored to a shared `start`; lasa's webtransport-go pinned
+      v0.12 to match quic-go v0.61). `TestWebTransportE2E`: WT and
+      raw-QUIC clients in one space, both speaking, each hearing
+      the other — every path crosses the WT session. Both repos
+      `-race` green.
+- [x] D2 — interop spike — DONE 2026-08-05: PASSED with ZERO codec
+      changes (the Eyevinn-lineage bet: our fork descends from the
+      exact implementation the SDK codec was golden-fixtured
+      against). New package `panaudia-client/sdks/typescript-lasa`
+      (@panaudia/lasa-client, PROVENANCE.md provenance-style):
+      copied transport files + shared-types; divergence 1 =
+      additive extraParams on buildClientSetup/initialize carrying
+      the 0x1A5A1 Connection Config (`src/lasa/setup.ts`: config
+      builder, namespace tuples, track names). Playwright rig
+      (vite spike page + globalSetup building/booting
+      panaudia-server). TLS: the rig uses the real *.panaudia.com
+      wildcard (code/panaudia/keys/server.{crt,key},
+      dev.panaudia.com → 127.0.0.1 in /etc/hosts — the old SDK
+      harness's pattern, Paul's pointer) = production TLS shape,
+      no browser flags; falls back to the ECDSA dev-cert
+      serverCertificateHashes path (also proven end to end) when
+      the keys are absent. Full chain
+      green: WT with moqt-16 subprotocol negotiated → SETUP+config
+      → SUBSCRIBE_OK → presence keyframe (entity admitted; the
+      session auto-OK'd the server's subscribes back). Server
+      fixes that fell out: `CheckOrigin` allow-all on the WT
+      server (deliberate policy — tickets are the auth, never
+      browser-ambient credentials; library default is same-origin)
+      + upgrade/session logging in wt.go.
+- [ ] D3 — LASA protocol layer in TS: namespaces/tracks,
+      connection config, the two-seam audio swap (mono-object out,
+      sink parse in), presence krecords, tickets at SETUP, and the
+      state client (op stream, groups, cursor resume, two lanes)
+      with the structured views on top. REQUIREMENT (Paul,
+      2026-08-05): the SDK is MULTI-ENTITY-FIRST — a connection
+      owns N entities (N publishers, per-entity pose, N
+      subscribable sinks) from the first commit; the old SDK's
+      one-entity-one-capture shape is not carried over. ALSO:
+      review the copied TS jitter buffer against the current Go v3
+      (constants/defaults — e.g. the 5 ms writer-frame default,
+      PLAYOUT_TUNING drift) and confirm it is channel-count-generic
+      for the ambi playout path.
+- [ ] D4 — sibling demo page in panaudia-client/examples; the
+      greenfield plan's feature-parity inventory (I-A)
+- [ ] D5 (recorded 2026-08-05, Paul's browser-replaces-native
+      insight) — two capabilities the protocol already carries:
+      (a) BROWSER AS AMBI RECEIVER, replacing the old native macOS
+      app: producer-ticket ambi2/ambi3 subscribe over WT → TS
+      multistream splitter (coupled=0 identity mapping ⇒ the packet
+      is N self-delimited standard opus packets; WebCodecs can't
+      eat multistream directly, so ~100-line framing parser + N
+      AudioDecoders → interleaved N-ch ring) → multichannel output
+      via a virtual device (BlackHole etc.; setSinkId +
+      destination.channelCount; docs/support story, no native
+      code — panaudia-driver-macos exists if a first-party device
+      is ever wanted); (b) BROWSER AS MULTI-TRACK OBJECT SENDER: a
+      presenter/producer connection with N entities = a stem feed —
+      multichannel virtual input device → channel splitter → N
+      capture/encode pipelines → N mono-object tracks; server side
+      needs nothing (entities are entities; the S4 state plane
+      gives per-stem control). Both hinge on D3's
+      multi-entity-first shape.
+
 ## Deferred beyond this plan
 WebTransport;
 TS client (Phase D); the SIMD-P7/P3(b) capacity program; occlusion
