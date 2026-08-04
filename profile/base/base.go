@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"sort"
+	"strconv"
 
 	"github.com/panaudia/lasa/connect"
 	"github.com/panaudia/lasa/wire"
@@ -42,10 +43,17 @@ func SignedAttrKey(id, path string) string { return EntityKey(id, "signed-attrs.
 func SweepScope(entityID string) string { return EntityMarkerKey(entityID) }
 
 // AdmissionGroup builds the server-authored state group announcing an
-// admitted entity: the existence marker, the name, the signed attrs (from
-// the ticket definition) and unsigned attrs (from the config or setup),
-// flattened to dotted leaf keys with JSON-encoded values per
-// lasa-base-profile.md §1.
+// admitted entity: the existence marker, the name, the config-derived
+// consumer vocabulary (channel memberships, render overrides, priority,
+// dof), and the signed attrs (from the ticket definition) plus unsigned
+// attrs (from the config or setup), flattened to dotted leaf keys with
+// JSON-encoded values per lasa-base-profile.md §1.
+//
+// Channel memberships are materialized as the EFFECTIVE sets (§6): an
+// omitted config list writes `main`, an explicit empty list writes no
+// keys — under a live marker the present key set IS the membership.
+// Render fields, priority and dof are written only when the config sets
+// them (absence means the documented default).
 func AdmissionGroup(e *connect.ResolvedEntity) (wire.Group, error) {
 	ops := []wire.StateMessage{
 		wire.Set{Key: EntityMarkerKey(e.ID), Value: []byte("true")},
@@ -55,6 +63,35 @@ func AdmissionGroup(e *connect.ResolvedEntity) (wire.Group, error) {
 		return wire.Group{}, err
 	}
 	ops = append(ops, wire.Set{Key: NameKey(e.ID), Value: name})
+
+	trueLit := []byte("true")
+	for _, ch := range effectiveChannels(e.Sources) {
+		ops = append(ops, wire.Set{Key: SourceChannelKey(e.ID, ch), Value: trueLit})
+	}
+	for _, ch := range effectiveChannels(e.Sinks) {
+		ops = append(ops, wire.Set{Key: SinkChannelKey(e.ID, ch), Value: trueLit})
+	}
+	if e.Priority {
+		ops = append(ops, wire.Set{Key: EntityKey(e.ID, "priority"), Value: trueLit})
+	}
+	if r := e.Render; r != nil {
+		for _, f := range []struct {
+			key string
+			val *float64
+		}{
+			{RenderGainKey(e.ID), r.Gain},
+			{RenderAttenuationKey(e.ID), r.Attenuation},
+			{RenderSizeKey(e.ID), r.Size},
+			{RenderDirectivityKey(e.ID), r.Directivity},
+		} {
+			if f.val != nil {
+				ops = append(ops, wire.Set{Key: f.key, Value: strconv.AppendFloat(nil, *f.val, 'g', -1, 64)})
+			}
+		}
+	}
+	if e.Dof != nil {
+		ops = append(ops, wire.Set{Key: DofKey(e.ID), Value: strconv.AppendInt(nil, int64(*e.Dof), 10)})
+	}
 
 	// For a signed entity the definition's attrs came from inside the
 	// ticket (signed-attrs) and the setup's attrs are the unsigned ones;
@@ -76,6 +113,15 @@ func AdmissionGroup(e *connect.ResolvedEntity) (wire.Group, error) {
 		ops = append(ops, setupOps...)
 	}
 	return wire.Group{Ops: ops}, nil
+}
+
+// effectiveChannels resolves a config membership list to the effective
+// one (§4): nil (omitted) defaults; explicit empty stays empty.
+func effectiveChannels(list []string) []string {
+	if list == nil {
+		return DefaultChannels()
+	}
+	return list
 }
 
 // attrOps flattens a (possibly nested) attrs object into one Set per leaf,

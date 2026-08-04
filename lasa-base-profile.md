@@ -242,7 +242,12 @@ ticket — different authorship guarantee, immutable. Flattening per
 §1.
 
 **`sources.{channel}` / `sinks.{channel}`** — the channels in which
-this entity is heard / hears. Defaults per §4.
+this entity is heard / hears. Defaults per §4, applied at admission:
+the server materializes the **effective** membership into these keys —
+an omitted config list is written as `main`, an explicit empty list
+writes no keys — so under a live existence marker the present key set
+IS the membership, and state carries no defaulting rule of its own
+("deliberately none" is representable).
 
 **`priority`** — marks this entity's source as important: rendering
 should make every effort to preserve its accuracy and quality. Do not

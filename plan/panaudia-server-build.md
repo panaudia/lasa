@@ -224,17 +224,65 @@ for any engine Layer-1 divergence; Paul's git.
   Both repos `-race` green; profile role tables unit-tested against
   the §2 text.
 
-### S4 — state wiring (Phase C pulled in)
-- [ ] observer subscription → `profile/base` parse → engine mutators
+### S4 — state wiring (Phase C pulled in) — DONE 2026-08-04
+- [x] observer subscription → `profile/base` parse → engine mutators
       (render params, channels, entity mute); defaults parity test
       (profile defaults ≡ `engine.DefaultRenderParams()`)
-- Accept: state-driven render changes e2e (mute silences, gain
-  changes level, channel exclusion works)
-### S5 — presence + moderation e2e
-- [ ] presence feed live (collector + loudness getters); client
+- Built: `wiring.go` (stateWiring — the profile consumer). Derived
+  state is the heart: the engine refuses params for entities it
+  doesn't hold and forgets them at departure, while ops arrive
+  before EntityJoined and space-scoped keys outlive entities — so
+  every mutator call is "apply if live, re-apply at join". Entry
+  lifecycle is marker-driven (§6 ignore-while-absent; marker-first
+  sweep drops the entry before its subtree clears arrive); the
+  funnel's EntityJoined flushes derived params + surviving space
+  mute after AddSource. Channel table composes the three per-channel
+  keys into engine.ChannelParams (unset attenuation → profile
+  default: the engine cannot represent no-override until Phase C's
+  per-pair record). Dof events → rec.dof (live moderator changes).
+  PersonalMute/Solo parsed but unwired — no engine mechanism until
+  the Phase C pair record; Frame config-only in v0; blocked keys are
+  the gate's. Invalid values drop-and-count (S6 stats surface).
+- Enabler (lasa): `base.AdmissionGroup` now materializes the
+  config-derived vocabulary — EFFECTIVE channel memberships
+  (omitted → main, explicit empty → no keys; §6 sentence added:
+  under a live marker the key set IS the membership), set render
+  fields, priority, dof. Entity config reaches the engine through
+  the ONE state path; no dual application.
+- Finding (engine, by level-measurement — engine is CORRECT, the
+  first test's expectations weren't): render.gain is POWER-domain
+  (ambisonic gainFactor = √gain) and every sink output passes a
+  compressor/limiter (−18 dB threshold, 2.5:1, 6 dB knee —
+  inout.StereoCompressorLimiter, Layer 1). Measured ratios matched
+  √gain × compressor slope to three digits once identified. The e2e
+  drives a −25 dBFS tone to sit below the knee and asserts the
+  linear regime (gain 0.25 → ×0.5 level). Profile §6 does not pin
+  the gain domain — flag for Paul: erratum candidate ("gain
+  multiplies power") vs engine change to amplitude-domain.
+- Accept MET: `TestStateDrivenRender` (ticketed producer+moderator
+  console, zero-entity) — gain 0.25 halves the level and clear
+  restores; space mute silences and clear restores; channel
+  exclusion (speaker main→stage) silences and the listener's sink
+  joining stage restores. `TestDefaultsParity` pins profile ≡
+  engine ≡ wiring defaults. Both repos `-race` green.
+### S5 — presence + moderation e2e — DONE 2026-08-04
+- [x] presence feed live (collector + loudness getters); client
       receives presence with correct poses/loudness
-- [ ] block/kick e2e via state writes through the gate
-- Accept: both observable from the reference client
+- [x] block/kick e2e via state writes through the gate
+- No production code needed — S2/S3 wired the collector (Register +
+  loudness getter at join, UpdatePose from ingress, Remove in
+  teardown) and L4 the gate; S5 is the composed proof. Tests:
+  `TestPresenceFeed` — keyframes on the reference client carry both
+  entities; the speaker's record shows its published pose (Y=1) and
+  the ENGINE's post-gain loudness (0.1-amp sine ≈ −23 dBFS, asserted
+  in (−45, −8) dB — the composition lasa's stub-fed e2e cannot
+  check); the silent listener reads home pose + LoudnessSilent.
+  `TestBlockKickE2E` — a moderator console's
+  `lasa.space.client.blocked` write severs the live target through
+  the normal funnel (both invariant halves drain), the blocked
+  reconnect is refused with §4.6 code 0x1A5A06, and clearing the key
+  readmits. Suite `-race` green.
+- Accept MET: both observable from the reference client
 ### S6 — acceptance instruments
 - [ ] chirp + pose harnesses ported to run through server + client
       loop (mouth-to-ear minus network); numbers logged as the
