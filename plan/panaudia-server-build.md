@@ -13,9 +13,9 @@ for any engine Layer-1 divergence; Paul's git.
 
 ## Preconditions
 
-- [ ] Paul: commit outstanding engine work (latency/pose harnesses,
+- [x] Paul: commit outstanding engine work (latency/pose harnesses,
       `LatencySamples`, vestige removal — PROVENANCE #5)
-- [ ] Paul: create the `panaudia-server` repo (needed from S1)
+- [x] Paul: create the `panaudia-server` repo (needed from S1)
 
 ## Batch L — lasa (SPI-breaking window: the stub is the only embedder)
 
@@ -106,30 +106,124 @@ for any engine Layer-1 divergence; Paul's git.
 
 ## Batch S — panaudia-server (composes L + E)
 
-### S1 — scaffold & clock wiring
-- [ ] repo, module `github.com/panaudia/panaudia-server`, deps
+### S1 — scaffold & clock wiring — DONE 2026-08-01
+- [x] repo, module `github.com/panaudia/panaudia-server`, deps
       (lasa, panaudia-engine — both replace-free), config/env
       surface, `main` skeleton
-- [ ] ticker owned here; epoch₀ read at first tick; `SampleEpoch`
+- [x] ticker owned here; epoch₀ read at first tick; `SampleEpoch`
       closure handed to the shell (§1 C5)
-- Accept: starts, ticks, serves an empty space
-### S2 — the lifecycle funnel (§5)
-- [ ] one serialized funnel: `Admit` (evict-old wait), `EntityJoined`
+- Note: go.mod carries TEMPORARY `replace` directives to the sibling
+  checkouts — lasa/engine local commits are ahead of origin; flip to
+  pinned pseudo-versions once Paul pushes both
+- Accept: starts, ticks, serves an empty space — boot smoke test
+  (`main_test.go`) boots the composed server, waits for render
+  ticks, connects a real lasa client, and sees the probe entity's
+  admission marker in the synced client store
+### S2 — the lifecycle funnel (§5) — DONE 2026-08-01
+- [x] one serialized funnel: `Admit` (evict-old wait), `EntityJoined`
       → engine adds, `EntityLeft` → engine removes; conn-map mutated
       only here; engine errors fatal to the connection
-- [ ] e2e with the lasa reference client: connect / disconnect /
+- [x] e2e with the lasa reference client: connect / disconnect /
       evict-old sequences; conn-map ≡ engine-entity-set invariant
-- Accept: lifecycle e2e green
-### S3 — the audio path
-- [ ] ingress: Depacketizer-wrapped handler → pose fan-out (source
+- Enablers added: lasa `Server.SeverClient` (the evict trigger half
+  of the Admit-may-block contract; severMatching gained a cause
+  param); engine `Mixer.Entities()` (invariant assertion surface)
+- Composition findings fixed in engine (found by -race here, both
+  Layer 2): `Close` now waits for an active `Run` to return before
+  draining audio-thread state (the documented contract was
+  undischargeable by a Run-driven host); the default HRTF delay-model
+  install in `New` is once-guarded (process-global params vs a
+  rendering mixer's audio thread)
+- Known gap (recorded in Admit's comment): zero-entity sessions hold
+  no conn-map records, so they are neither tracked nor evictable —
+  nothing engine/entity-key-side to order against
+- Accept: lifecycle e2e green (connect/disconnect, entity-id
+  collision handoff, same-client reconnect displacement, capacity
+  refusal — each settling through the two-sided invariant)
+### S3 — the audio path — DONE 2026-08-01
+- [x] ingress: Depacketizer-wrapped handler → pose fan-out (source
       ring via `WriteOpus`, sink slot via `SetPose`, dof enforcement,
       presence collector) → `WriteOpus`/`Conceal`
-- [ ] `StartSink` → `AddSink` with the `FrameWriter`→`SinkWriter`
+- [x] `StartSink` → `AddSink` with the `FrameWriter`→`SinkWriter`
       bridge; jitter geometry W=5 ms; head-frame reject at admission
       (§4); format negotiation (binaural v0)
-- [ ] e2e: two clients hear each other (tone detection);
+- [x] e2e: two clients hear each other (tone detection);
       `AllocsPerRun` = 0 on both audio paths
-- Accept: audio e2e green
+- Details: entityRec IS the Receiver (dof enforced at ingest per
+  profile §6 — dof 3 pins position to home, dof 0 discards pose;
+  the enforced pose feeds ring + sink slot + presence slot alike);
+  Lost conceals only when audioLikely; head-frame refusal uses
+  ErrCodeMalformedConfig (no dedicated code exists — revisit with a
+  spec erratum if head-frame support ever negotiates); sinks are
+  each entity's OWN rendered perspective (binding: own-or-SinkAll)
+- Gap RESOLVED (Paul chose option A, 2026-08-01): lasa's
+  sinkManager gained `dropEntity` — entity departure stops the
+  entity's renders and ends subscribers' tracks with SUBSCRIBE_DONE
+  track-ended; re-subscribe is the recovery (subscription stays the
+  only lifecycle signal). Called from teardown AFTER EntityLeft so
+  no interleaving leaves a stale entry (post-EntityLeft subscribes
+  refuse; pre-delete attachees still get their DONE). Unit-tested
+  with a fake publisher (stop, DONE code, idempotence, fresh render
+  on return). The funnel's idempotent RemoveSink at EntityLeft
+  stays as the engine-side backstop.
+- Accept: audio e2e green (440 Hz Opus through speaker →
+  depacketizer → jitter → spatial render → binaural encode →
+  listener's own sink → decode, energy detected; ingress and egress
+  bridge both 0 allocs/op)
+### S3.5 — tickets (pulled forward from deferred, 2026-08-01) — DONE 2026-08-04
+- Design settled with Paul 2026-08-04:
+  1. Issuance is out of scope by deliberate separation of concerns.
+     The server is verification-only: its config carries a SINGLE
+     Ed25519 PUBLIC key; the private key never touches the server.
+     Mint tooling (CLI, client libraries in other languages) comes
+     later — tests mint in-process via `connect.Mint`.
+  2. `exp` gates admission only — a live session outlives its
+     ticket's validity (matches core §4.3/§4.5: exp bounds reuse,
+     not tenure). No mid-session sever timer.
+  3. No refresh story for these tokens.
+  4. `SinkAll` is granted by the `admin` and `producer` roles.
+  5. No key rotation.
+- [x] roles→rules expansion in `profile/base` (`roles.go`): the §2
+      tables as code; `RulesFor`, `AdHocPermitted` (admin,
+      presenter), `SinkAll` (admin, producer)
+- [x] server: `PANAUDIA_TICKET_KEY` env surface (one public key);
+      `RulesFor`/`AdHocPermitted`/`SinkAll` wired to `profile/base`;
+      `AllowUnticketed` explicit (`PANAUDIA_ALLOW_UNTICKETED`,
+      default true iff no ticket key)
+- Enablers (each a spec edit folded in place + code):
+  - core §6.4 gained `*`-segment scopes (one wildcard segment = one
+    identifier segment) — moderator's any-entity dof and producer's
+    any-entity keys are inexpressible as literal prefixes since
+    rules are fixed at Register but entities keep arriving. Chosen
+    over predicate-rules with Paul (option A, 2026-08-04). Legal in
+    role expansion only; ticket `permissions` stay literal
+    (schema unchanged). `ident.ScopeMatches` fast-path preserved.
+  - base profile §2: producer writes pinned as any-entity (the
+    mixing-desk role) and producer gained the subscribe-to-any-sink
+    grant; admin's "two grants outside the roles" reduced to one
+    (unblockable), sink-any now arriving via the union.
+  - `state.Rules` gained `App` (application-space grant — every key
+    outside `lasa.`): §2 "unticketed spaces are unrestricted over
+    application space" is otherwise inexpressible (positive prefixes
+    cannot say "everything but lasa."). Unticketed → App=true;
+    ticketed reach app space via permissions only. Read-visibility
+    hash carries a `\x00` sentinel (illegal in keys) when App set.
+  - `server.Config` gained the `SinkAll func(roles) bool` hook
+    (mirror of `AdHocPermitted`); the admission binding now carries
+    it.
+- Why now: evict-old and block-by-client-id trust a self-asserted
+  id until tickets sign it (the recorded id-weakness notes); S5's
+  block/kick e2e only tests real authority if blocked-key writes
+  need a producer/admin role
+- Accept MET: e2e with `AllowUnticketed: false` (`ticket_test.go`) —
+  unticketed refused; ticketed setups admit; ad-hoc refused for
+  audience, admitted for presenter; audience `lasa.space.*` write
+  silently filtered while producer's lands (same-connection ordering
+  proves the drop); audience refused another entity's sink while
+  producer subscribes cross-connection (the first real SinkAll use).
+  Both repos `-race` green; profile role tables unit-tested against
+  the §2 text.
+
 ### S4 — state wiring (Phase C pulled in)
 - [ ] observer subscription → `profile/base` parse → engine mutators
       (render params, channels, entity mute); defaults parity test

@@ -20,6 +20,7 @@ import (
 var (
 	errSessionEnded = errors.New("server: session ended")
 	errBlockedLive  = errors.New("server: blocked by moderation")
+	errEvicted      = errors.New("server: evicted by a colliding admission")
 )
 
 // connSession is one client connection: admission state, ingress routing,
@@ -103,7 +104,12 @@ func (cs *connSession) onClientSetup(params moqtransport.KVPList) error {
 	}
 	cs.resolved = res
 	cs.econn = econn
-	cs.binding = &ident.Binding{Space: cs.srv.cfg.SpaceID, Client: res.ClientID, Entities: entities}
+	cs.binding = &ident.Binding{
+		Space:    cs.srv.cfg.SpaceID,
+		Client:   res.ClientID,
+		Entities: entities,
+		SinkAll:  cs.srv.cfg.SinkAll != nil && cs.srv.cfg.SinkAll(res.Roles),
+	}
 	return nil
 }
 
@@ -392,6 +398,9 @@ func (cs *connSession) teardown() {
 			cs.srv.cfg.Backend.EntityLeft(cs.resolved.ClientID, e.ID)
 			// Roster hygiene the embedder cannot forget (design §6).
 			cs.srv.collector.Remove(e.ID)
+			// After EntityLeft (see dropEntity): end the departed
+			// entity's sink tracks.
+			cs.srv.sinks.dropEntity(e.ID)
 		}
 	}
 	cs.srv.sinks.dropConn(cs)

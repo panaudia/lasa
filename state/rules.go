@@ -13,11 +13,22 @@ type Rules struct {
 	Set   []string
 	Clear []string
 	Read  []string
+
+	// App grants unrestricted access to application space — every key
+	// outside the reserved "lasa." profile prefix (lasa-core.md §1.1).
+	// The base profile grants it to unticketed connections; ticketed
+	// connections reach application space only via explicit permission
+	// scopes.
+	App bool
 }
 
-func (r Rules) MaySet(key string) bool   { return anyScope(r.Set, key) }
-func (r Rules) MayClear(key string) bool { return anyScope(r.Clear, key) }
-func (r Rules) MayRead(key string) bool  { return anyScope(r.Read, key) }
+func (r Rules) MaySet(key string) bool   { return r.appSpace(key) || anyScope(r.Set, key) }
+func (r Rules) MayClear(key string) bool { return r.appSpace(key) || anyScope(r.Clear, key) }
+func (r Rules) MayRead(key string) bool  { return r.appSpace(key) || anyScope(r.Read, key) }
+
+func (r Rules) appSpace(key string) bool {
+	return r.App && !ident.ScopeMatches("lasa", key)
+}
 
 func anyScope(scopes []string, key string) bool {
 	for _, s := range scopes {
@@ -31,9 +42,14 @@ func anyScope(scopes []string, key string) bool {
 // readHash is the gate-4 effective-visibility hash: a canonical hash of
 // the fully-expanded read-rule set. The encoding is engine-internal — it
 // never crosses the wire — but reuses the set-hash construction for
-// convenience.
+// convenience. The App grant changes visibility, so it must land in the
+// hash; "\x00" cannot appear in a key, making the sentinel collision-free.
 func (r Rules) readHash() [32]byte {
-	return wire.SetHash(wire.CanonicalPrefixes(r.Read))
+	read := r.Read
+	if r.App {
+		read = append(append([]string(nil), read...), "\x00app")
+	}
+	return wire.SetHash(wire.CanonicalPrefixes(read))
 }
 
 // subscriptionMatch is the §6.3 subscription filter: PLAIN string prefix —

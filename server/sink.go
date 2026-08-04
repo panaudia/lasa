@@ -94,6 +94,36 @@ func (m *sinkManager) dropConn(cs *connSession) {
 	}
 }
 
+// dropEntity stops every render OF the given entity and ends its
+// subscribers' tracks with SUBSCRIBE_DONE (track ended): entity
+// departure terminates the entity's sink tracks, and a subscriber who
+// wants the entity's return re-subscribes — subscription stays the only
+// lifecycle signal (decided 2026-08-01, option A; the alternative — a
+// render entry surviving departure — would hand a reused stale render
+// to the entity's successor). Called from teardown AFTER EntityLeft:
+// once the embedder's record is gone a racing subscribe cannot start a
+// fresh render for the departed entity, and one attached to the old
+// entry before our delete still gets its SUBSCRIBE_DONE here.
+func (m *sinkManager) dropEntity(entityID string) {
+	m.mu.Lock()
+	var stopped []*render
+	for key, r := range m.renders {
+		if key.entity == entityID {
+			stopped = append(stopped, r)
+			delete(m.renders, key)
+		}
+	}
+	m.mu.Unlock()
+	for _, r := range stopped {
+		r.session.Stop()
+		if pubs := r.writer.pubs.Load(); pubs != nil {
+			for _, pe := range *pubs {
+				_ = pe.pub.CloseWithError(uint64(moqtransport.ErrorCodeSubscribeDoneTrackEnded), "entity left")
+			}
+		}
+	}
+}
+
 // drop removes one failed publisher (send error = unsubscribed/closed).
 func (m *sinkManager) drop(r *render, failed moqtransport.Publisher) {
 	m.mu.Lock()

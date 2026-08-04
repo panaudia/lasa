@@ -40,7 +40,8 @@ grants. Permissions may target any prefix, including `lasa.` — a
 fine-grained grant without the full role. Value-level rules (allowed
 values, §5's admin protection) apply regardless of how write access
 was obtained. Scopes below match exact-key-or-dot-extended-prefix,
-per the core.
+per the core; the any-entity grants expand to `*`-segment scopes
+(`lasa-core.md` §6.4).
 
 ### audience
 
@@ -85,17 +86,22 @@ Config (`lasa-core.md` §4.2).
 - `lasa.space.channel.gain.{channel-name}` — set, clear
 - `lasa.space.channel.attenuation.{channel-name}` — set, clear
 
-For the `render.*` keys and the channel overrides, `clear` reverts to
-the documented default (absence-means-default).
+Producer writes target **any** entity — this is the mixing-desk
+role, and unlike `audience` its entity grants are not limited to the
+connection's own entities. For the `render.*` keys and the channel
+overrides, `clear` reverts to the documented default
+(absence-means-default).
+
+A producer may also subscribe to **any** entity's sink tracks
+("listening through e's ears" — the privacy statement in
+`lasa-core.md` §3.1): monitoring what listeners hear is part of the
+desk.
 
 ### admin
 
-The union of all four roles, plus two grants that belong to no
-component role:
-
-- may subscribe to **any** entity's sink tracks ("listening through
-  e's ears" — the privacy statement in `lasa-core.md` §3.1);
-- is **unblockable** (§5).
+The union of all four roles (which carries producer's
+subscribe-to-any-sink grant), plus one grant that belongs to no
+component role: admin is **unblockable** (§5).
 
 ### Application space
 

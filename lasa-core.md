@@ -480,6 +480,16 @@ prefix**: a scope `p` matches key `k` iff `k = p′` or `k` begins with
 matching here would either hide a bare key from its own dotted scope
 or leak sibling ids.)
 
+A scope may contain **`*` segments**, each matching exactly one
+identifier segment — `lasa.entity.*.dof` matches
+`lasa.entity.a1.dof` (and its dot-extensions) but not
+`lasa.entity.a1.render.dof`. Since identifiers never contain dots
+(§2), segment matching is unambiguous. Wildcards exist for role
+expansion — profile role tables grant key suffixes across all
+entities, present and future (base profile §2) — and are legal only
+in server-side expanded rules; ticket `permissions` prefixes remain
+literal (`ticket.schema.json` is unchanged).
+
 ### 6.5 Delivery: delta, snapshot, frontier
 
 On subscribe the server answers with exactly one of:

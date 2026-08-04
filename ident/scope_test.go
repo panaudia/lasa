@@ -23,6 +23,25 @@ func TestScopeMatches(t *testing.T) {
 		{"a.b", "a.b", true},
 		{"a.b", "a.bc", false},
 		{"a.b", "a", false},
+
+		// Wildcard segments: * matches exactly one non-empty segment
+		// (role expansion's any-entity grants, lasa-core.md §6.4).
+		{"lasa.entity.*.dof", "lasa.entity.a1.dof", true},
+		{"lasa.entity.*.dof", "lasa.entity.a1.dof.x", true},       // dot-extension still applies
+		{"lasa.entity.*.dof", "lasa.entity.a1.render.dof", false}, // * spans exactly one segment
+		{"lasa.entity.*.dof", "lasa.entity.a1", false},            // key exhausted mid-scope
+		{"lasa.entity.*.dof", "lasa.entity.a1.dofx", false},       // sibling-id leak check holds
+		{"lasa.entity.*.render.gain", "lasa.entity.e1.render.gain", true},
+		{"lasa.entity.*.render.gain", "lasa.entity.e1.render", false},
+		{"lasa.entity.*", "lasa.entity.a1", true},       // trailing wildcard, exact
+		{"lasa.entity.*", "lasa.entity.a1.name", true},  // ...and its subtree
+		{"lasa.entity.*", "lasa.entity", false},         // nothing for * to consume
+		{"lasa.entity.*.", "lasa.entity.a1.name", true}, // trailing dot trims as usual
+		{"*", "anything", true},                         // one segment
+		{"*", "any.thing", true},                        // ...plus dot-extension
+		{"*", "", false},                                // empty key gives * nothing to consume
+		{"*.dof", "a1.dof", true},
+		{"*.dof", "dof", false},
 	}
 	for _, c := range cases {
 		if got := ScopeMatches(c.scope, c.key); got != c.want {

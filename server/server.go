@@ -47,6 +47,12 @@ type Config struct {
 	// (base profile: admin and presenter). nil means never.
 	AdHocPermitted func(roles []string) bool
 
+	// SinkAll decides whether a connection may subscribe to any entity's
+	// sink tracks, beyond its own — profile policy over the ticket's
+	// roles (base profile: admin and producer). nil means never;
+	// unticketed connections carry no roles and never qualify.
+	SinkAll func(roles []string) bool
+
 	// RulesFor computes a connection's merged state-access rules — the
 	// union of its roles' expanded rules and its ticket permissions.
 	// Required.
@@ -113,7 +119,7 @@ func (s *Server) unregisterLive(cs *connSession) {
 	s.liveMu.Unlock()
 }
 
-func (s *Server) severMatching(match func(clientID string, roles []string) bool) {
+func (s *Server) severMatching(cause error, match func(clientID string, roles []string) bool) {
 	s.liveMu.Lock()
 	var hit []*connSession
 	for cs, info := range s.live {
@@ -123,8 +129,18 @@ func (s *Server) severMatching(match func(clientID string, roles []string) bool)
 	}
 	s.liveMu.Unlock()
 	for _, cs := range hit {
-		cs.cancel(errBlockedLive)
+		cs.cancel(cause)
 	}
+}
+
+// SeverClient cancels every live session carrying the given client id;
+// teardown then runs each session's normal departure funnel (the
+// embedder sees EntityLeft). This is the trigger half of the SPI's
+// Admit-may-block contract (server-spi.md (f)): an evict-old embedder
+// calls it from Admit on collision, then waits for the predecessor's
+// EntityLeft before admitting the replacement.
+func (s *Server) SeverClient(clientID string) {
+	s.severMatching(errEvicted, func(id string, _ []string) bool { return id == clientID })
 }
 
 // New validates cfg, starts the engine and the presence loop.

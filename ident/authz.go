@@ -11,7 +11,7 @@ type Binding struct {
 
 	// SinkAll grants subscription to any entity's sink tracks — profile
 	// policy beyond the owner (the base profile grants it to the admin
-	// role, "listening through e's ears").
+	// and producer roles, "listening through e's ears").
 	SinkAll bool
 }
 

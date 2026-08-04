@@ -1,10 +1,9 @@
 // Package base implements the LASA base profile (lasa-base-profile.md):
-// the lasa. key vocabulary as typed builders, and the admission/sweep
-// helpers the server shell applies so no embedder can forget them.
-//
-// v0 scope (implementation-plan.md step 6): the existence marker, name,
-// attrs and signed-attrs. Roles expansion, channels, moderation
-// enforcement, dof and render vocabulary land with step 7.
+// the lasa. key vocabulary as typed builders and parsers (keys.go,
+// consume.go), the channel composition semantics (compose.go), the
+// admission/sweep helpers the server shell applies so no embedder can
+// forget them, and the §2 roles expansion (roles.go) that turns a
+// connection's roles into its effective state-access rules.
 package base
 
 import (

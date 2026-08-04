@@ -91,7 +91,7 @@ func (g *moderationGate) onOp(key string, value []byte, cleared bool) {
 	g.mu.Unlock()
 
 	if effective(until, time.Now().Unix()) {
-		g.srv.severMatching(func(clientID string, roles []string) bool {
+		g.srv.severMatching(errBlockedLive, func(clientID string, roles []string) bool {
 			if hasRole(roles, adminRole) {
 				return false // §5: never terminate an admin connection
 			}
