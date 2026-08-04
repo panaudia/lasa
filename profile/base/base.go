@@ -92,6 +92,11 @@ func AdmissionGroup(e *connect.ResolvedEntity) (wire.Group, error) {
 	if e.Dof != nil {
 		ops = append(ops, wire.Set{Key: DofKey(e.ID), Value: strconv.AppendInt(nil, int64(*e.Dof), 10)})
 	}
+	if e.Frame == "head" {
+		// Materialized so every client can render the entity's presence
+		// poses as head-relative ("world" is the absent default).
+		ops = append(ops, wire.Set{Key: FrameKey(e.ID), Value: []byte(`"head"`)})
+	}
 
 	// For a signed entity the definition's attrs came from inside the
 	// ticket (signed-attrs) and the setup's attrs are the unsigned ones;

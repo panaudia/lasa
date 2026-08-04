@@ -281,7 +281,12 @@ point source. How renderers represent size is up to them.
 every listener's head — an aural HUD, an angel on the shoulder.
 Head-frame entities appear on the presence track with the krecord
 head-frame flag set (`lasa-core.md` §7); their presence poses are
-head-relative, not world positions.
+head-relative, not world positions. Two consequences, pinned
+2026-08-05: head-frame entities are **source-only** — they have no
+world position, so their own sink tracks are refused (nothing
+defines what they would hear) — and they are **absent from the
+ambisonic sink formats**, whose world-frame fields cannot carry a
+per-listener source; they render in `binaural` sinks only.
 
 **`dof`** — degrees of freedom: 6 (default) moves and turns freely;
 3 turns in place; 0 is fixed. **The space enforces dof at ingest**:

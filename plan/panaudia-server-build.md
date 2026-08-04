@@ -469,8 +469,37 @@ for any engine Layer-1 divergence; Paul's git.
   — order-2 space offers ambi2, refuses ambi3. All three repos
   `-race` green.
 
+### P5 — head-frame entities — DONE 2026-08-05
+- The Phase B §4 sketch implemented, with Paul's three rulings:
+  EXCLUDED from ambi/classic renders (a per-listener source is
+  unrepresentable in a world-frame field), SOURCE-ONLY (no world
+  position to hear from — StartSink refuses all formats), and
+  JITTER-ALIGNED pose pipeline (the sketch's fresh-slot lean not
+  taken: zero new machinery, one source-pose story, coherence free).
+- [x] engine: `SourceConfig.HeadFrame` → encoder `headFrameSource`
+      (PROVENANCE #13): bilateral geometry takes the pose verbatim
+      (no translation, no head rotation — ITD/parallax/NFC/extent
+      unchanged downstream; directivity/size stay coherent since
+      forward and rel share the listener frame);
+      `shouldIncludePeer` excludes head-frame from classic renders
+- [x] lasa: `AdmissionGroup` materialises `frame:"head"`; §6
+      erratum pins source-only + absent-from-ambi
+- [x] server: Admit's rejection removed (the S3
+      ErrCodeMalformedConfig note is moot); EntityJoined passes the
+      flag to engine AND presence Register (krecord flag was
+      already on the wire); StartSink refuses head-frame entities
+- Accept MET: engine `TestHeadFrameInvariance` (angel pinned to the
+  left ear at constant level across teleports and about-faces —
+  the defining property) + `TestHeadFrameExcludedFromAmbi`;
+  composed `TestHeadFrameE2E` (admitted, head-invariant across a
+  20 m teleport + yaw via real pose packets, presence keyframe
+  flag set, own sink refused) + `TestHeadFrameAbsentFromAmbiE2E`
+  (presenter-carried head-frame entity audible in binaural, W
+  power ~0 in the tapped ambi2 field). All three repos `-race`
+  green.
+
 ## Deferred beyond this plan
-Ambi sink formats; head-frame rendering (§4 sketch); WebTransport;
+WebTransport;
 TS client (Phase D); the SIMD-P7/P3(b) capacity program; occlusion
 (cheap-render recipe recorded in size-and-directivity.md); spectral
 directivity.
