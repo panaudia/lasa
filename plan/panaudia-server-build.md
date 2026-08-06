@@ -781,8 +781,11 @@ for any engine Layer-1 divergence; Paul's git.
       discriminators; re-entry trigger = a third hand-tuned
       environment). All suites green post-change (engine,
       server -short + chirp, 6 Playwright, 144 vitest).
-      AWAITING: Paul's re-test — expect drops ≈ 0; any steady
-      one-sided residue is true clock drift, now separable.
+      CONFIRMED by Paul's re-test 2026-08-06: drop=0 und=0
+      win=0/0 across every window, dep lost=0; fill oscillates
+      15–20 ms inside the band (≈5 ms burst swing, no clipping);
+      no drift residue at all — the churn was pure burst-clipping,
+      no measurable clock mismatch. Sounds much better by ear.
 - [ ] D5 (recorded 2026-08-05, Paul's browser-replaces-native
       insight) — two capabilities the protocol already carries:
       (a) BROWSER AS AMBI RECEIVER, replacing the old native macOS
@@ -801,6 +804,26 @@ for any engine Layer-1 divergence; Paul's git.
       needs nothing (entities are entities; the S4 state plane
       gives per-stem control). Both hinge on D3's
       multi-entity-first shape.
+- [ ] Jitter-buffer burst behaviour redesign (TODO 2026-08-06,
+      Paul's call after the day's investigation) — v3's re-entry
+      trigger fired: four burst environments now known (browser
+      reader, browser writer, worker GC stalls, Bluetooth output
+      clock), and bursts ≈ band height pin the playout buffer at its
+      drop line (continuous splices). Design session covers:
+      burst-aware widening, fast re-centre after large offsets,
+      per-route profiles as interim. Full evidence + scope:
+      panaudia-engine/plan/jitter-v3-burst-aware-widening.md
+      (2026-08-06 addendum). Fixed en route: PoseCell unbounded
+      seqlock spin (bounded-retry read + test), instrumentation
+      feedback loop (summarised logging).
+- [ ] Bluetooth HFP collapse + mic selection (parked 2026-08-06,
+      investigated not fixed) — LASA page's mic-auto reintroduced
+      the device-opening selection flow the old client removed
+      2026-06-11 (priming + unknown-device probe can open the
+      AirPods mic ⇒ HFP), and the old post-connect HFP banner was
+      not ported. Findings, diagnosis steps (console
+      [MicSelection] discriminator) and candidate fixes:
+      bluetooth-hfp-todo.md.
 
 ## Deferred beyond this plan
 WebTransport;
