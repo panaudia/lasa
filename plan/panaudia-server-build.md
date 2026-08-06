@@ -548,11 +548,147 @@ for any engine Layer-1 divergence; Paul's git.
       server (deliberate policy — tickets are the auth, never
       browser-ambient credentials; library default is same-origin)
       + upgrade/session logging in wt.go.
-- [ ] D3 — LASA protocol layer in TS: namespaces/tracks,
-      connection config, the two-seam audio swap (mono-object out,
-      sink parse in), presence krecords, tickets at SETUP, and the
-      state client (op stream, groups, cursor resume, two lanes)
-      with the structured views on top. REQUIREMENT (Paul,
+- [~] D3 — LASA protocol layer in TS — CORE SLICE DONE 2026-08-05:
+      `src/lasa/wire.ts` (pose 18B, mono-object incl. redundancy
+      layout, sink, presence keyframe/delta — byte-exact via golden
+      vectors GENERATED FROM `lasa/wire` Go, tests/vectors/;
+      11 vitest cases) + `src/lasa/client.ts` (multi-entity-first
+      LasaClient: connect = Connection Config at SETUP; per-entity
+      EntityPublisher materialised from the server's
+      subscribe-back alias; subscribeSink/subscribePresence;
+      zero-alloc publish path). Session divergence 2:
+      single-reader dispatch (two concurrent control-stream
+      readers stole messages — found by the audio spec hanging).
+      Acceptance: `tests/audio.spec.ts` — one connection, TWO
+      entities; A publishes WebCodecs opus 5 ms mono-object
+      packets at real cadence, B hears itself back through its
+      binaural sink (WebCodecs decode, ≥50 energetic frames) —
+      the protocol audio path proven in-browser with no worklets.
+      STATE CLIENT DONE 2026-08-06:
+      `src/transport/subgroups.ts` (subgroup stream reader/writer +
+      per-alias router, type family 0x10–0x1D; buffers objects for
+      unclaimed aliases — the server writes the catch-up right
+      after Accept, racing SUBSCRIBE_OK processing; found as a
+      no-debug-only flake), `src/lasa/statewire.ts` (state messages
+      both directions + subscribe params + WebCrypto set-hash,
+      golden vectors extended to 21 incl. canonicalization +
+      cursor), `src/lasa/store.ts` (clientstore port —
+      resurrection guard, snapshot deletion rule, invariant F7,
+      epoch change, MemPersistence; Go store_test.go ported
+      test-for-test), `src/lasa/state.ts` (StateSync:
+      subscribe with 0x1A5A3 via session extraParams
+      [divergence 3], lanes 0/1 → applyLive/applyCatchUp on a
+      serialized chain, PUBLISH_DONE 0x0B dispatch
+      [divergence 4] as the re-subscribe cue with backoff),
+      LasaClient.writeState (upstream ops on a lazily-opened
+      0x15 subgroup stream over the server's state-source
+      subscribe-back alias) + syncState. Acceptance:
+      `tests/state.spec.ts` — A syncs, sees its admission keys
+      (marker + name) through catch-up, earns a cursor, writes an
+      own-entity attr, observes the server echo with a server
+      seq; B connects fresh and finds A's write in its catch-up.
+      41 vitest + 3 Playwright green, 3× stable.
+      AUDIO MACHINERY (architecture C, rulings 2026-08-05): full
+      worker transport — the old SDK's proven 3-thread shape
+      (worker owns WebTransport+session+read loops+codecs; main
+      owns facade/state/worklets; SAB rings between) — chosen over
+      the transferred-readable intermediate, which the old SDK
+      tried and found still main-gated (worker-transport-design.md
+      preamble). Capture: per-entity MONO pipelines (DAW multi-track
+      = N entities, stereo playback = 2), source acquisition beyond
+      the mic deferred. COOP/COEP hard requirement (SDK gates on
+      crossOriginIsolated — mechanism-agnostic; DIP noted as
+      Chrome-137-desktop-only, not a replacement). Meters kept.
+      POSE FRESHNESS (Paul): head-rotation latency minimised —
+      pose rides a per-entity SAB seqlock cell written by main,
+      read by the worker at datagram-framing time (freshest-wins
+      over capture-aligned; ~one 5 ms packet max staleness).
+      Steps 0–2 DONE 2026-08-05:
+      (0) COOP/COEP on the vite dev/preview server, verified
+      crossOriginIsolated=true + SAB in-page; host pinned to
+      127.0.0.1 (vite bound ::1-only, Playwright probes v4).
+      (1) copies at panaudia-client@824872c → `src/audio/`:
+      jitter-buffer-core, capture-ring, stereo-meter-core,
+      capture-worklet (verbatim + their test suites, 87 tests);
+      playout-worklet SAB-ONLY (divergence 5 — postMessage-PCM +
+      pcmPort fallbacks removed, throws without the shared ring).
+      Jitter review verdict: same v3 algorithm as
+      panaudia-engine/buffers; TS browser tuning (L/H minimums,
+      windowReads 750) is the deliberate 2026-06-10 reader-burst
+      retune — kept.
+      (2) worker transport live: `src/worker/protocol.ts` (typed
+      RPC: connect/subscribe+extraParams/sendDatagram/writeState/
+      close; forwarded datagram + subgroupObject + incomingSubscribe
+      + publishDone + notice events), `src/worker/moq-worker.ts`
+      (Vite module worker owning conn/session/both read loops and
+      the state-source SubgroupWriter), `src/worker/worker-transport.ts`
+      (main-side RPC + WorkerSessionProxy implementing the
+      StateSession surface StateSync now takes). LasaClient is the
+      main-side facade: store/StateSync fed via SubgroupRouter.ingest
+      from forwarded objects, DatagramRouter for sinks/presence,
+      publishers frame on main → worker writes. All three specs
+      (interop/audio/state) pass through the worker unchanged,
+      3× stable; 134 vitest green.
+      Step 3 DONE 2026-08-05 (playout path): protocol gained
+      setSinkTrack/clearSinkTrack (+ decode-error notice +
+      decodedFormat event); worker diverts sink aliases — parseSink
+      → AudioDecoder (optimizeForLatency, timestamps = seq×5000µs)
+      → writer-view JitterBufferCore over the shared ring, with the
+      old worker's f32/f32-planar copyTo probe (Firefox) + format
+      watch ported (drift-era gap/clock probes deliberately left
+      behind — PROVENANCE note); `src/audio/player.ts` SinkPlayer
+      (AudioPlayer descendant, SAB-only decode-free: graph + SAB
+      alloc + stats/TapB/graph-report + [JBUF] log);
+      LasaClient.playSink/stopSink (one player per entity sink,
+      multi-entity). Acceptance `tests/playout.spec.ts` (autoplay
+      flag added): tone A → B's binaural through worker-decode →
+      SAB → worklet; asserts from the WORKLET's own stats — Tap B
+      energetic and strongly stereo (corr −0.91, sideRms 0.13 =
+      real HRTF decorrelation), fill in-band 13–18 ms, ZERO
+      underruns/overruns/corrections in steady state, controller
+      observed narrowing L/H. 4 specs green 3× stable; 134 vitest.
+      Step 4 DONE 2026-08-05 (capture path): `src/audio/pose-cell.ts`
+      (per-entity 56-byte SAB seqlock, main writes / worker reads —
+      the pose-freshness rule); `src/audio/capture-encoder.ts` (old
+      capture-encoder with LASA framing: Opus packet →
+      MonoObjectPacket(pose,audio) → datagram groupId = gapless seq
+      §5.2, pose read at FRAMING time; unit tests incl. a
+      pose-freshness case); `src/audio/capture.ts` CapturePipeline
+      (per-entity mono, any AudioNode via ChannelSplitter, caller
+      owns the context, addModule once-per-context guard); worker:
+      entity-alias map + waiters, per-entity Atomics.waitAsync pump
+      (the old §6.1 loop), real AudioEncoder injected into the
+      unit-tested CaptureEncoder; protocol setCaptureTrack/
+      stopCapture (+encode-error notice);
+      LasaClient.startCapture/stopCapture (CaptureHandle.setPose).
+      Acceptance `tests/capture.spec.ts` — THE MILESTONE: oscillator
+      → capture worklet → SAB → worker encode → server render →
+      worker decode → SAB → playout worklet, no main-thread audio
+      either direction; fill in-band 13 ms, ZERO underruns/
+      corrections; AND the live mid-stream setPose changed the
+      rendered stereo image (corr −0.91 → +0.998, asserted shift
+      >0.5) — the SAB-fresh pose path proven end-to-end through the
+      server's HRTF. 5 specs green 3× stable; 144 vitest.
+      Step 5 DONE 2026-08-05 — D3 AUDIO MACHINERY COMPLETE.
+      Browser latency harness (`spike/latency.ts` +
+      `tests/latency.spec.ts`): SinkPlayer gained statsEvery +
+      setStatsListener (fine ~16 ms Tap B windows = measurement
+      resolution); mouth-to-ear onset (gated 2 kHz tone through the
+      full capture→server→playout loop) **46–62 ms**; sink-pose
+      flip (listener runs a silent capture pipeline so its pose
+      rides the SAB seqlock — the real head-tracked path; yaw π →
+      L/R dominance flip, the Go harness's technique) **50–53 ms**;
+      both to the RENDER point (DAC excluded; headless reported
+      base 5.3 + output 24 ms virtual). Numbers cross-check against
+      the Go rows (browser ≈ Go server + browser playout jitter +
+      capture chain + ≤2 windows). Rows + re-run recipe appended to
+      latency-baseline.md (the [C] gaps closed). Teardown verified
+      by the suite's clean closes across all six specs. Final: 6
+      Playwright specs green, 144 vitest, typecheck clean.
+      NEXT: D4 (sibling demo page in panaudia-client/examples +
+      feature-parity inventory), D5 (browser ambi receiver +
+      multi-track object sender).
+      Original scope note follows. REQUIREMENT (Paul,
       2026-08-05): the SDK is MULTI-ENTITY-FIRST — a connection
       owns N entities (N publishers, per-entity pose, N
       subscribable sinks) from the first commit; the old SDK's
@@ -561,8 +697,92 @@ for any engine Layer-1 divergence; Paul's git.
       (constants/defaults — e.g. the 5 ms writer-frame default,
       PLAYOUT_TUNING drift) and confirm it is channel-count-generic
       for the ambi playout path.
-- [ ] D4 — sibling demo page in panaudia-client/examples; the
-      greenfield plan's feature-parity inventory (I-A)
+- [x] D4 — sibling demo page in panaudia-client/examples; the
+      greenfield plan's feature-parity inventory (I-A).
+      PAGE HALF DONE 2026-08-05 (rulings: purpose-built LASA page,
+      not a port; SDK consumed from source via Vite alias until the
+      packaging pass; spike TLS story, mkcert not carried):
+      `examples/lasa-test-page/` — connect card (config/ticket/cert
+      hash), pre-connect entity list (the Connection Config is
+      setup-time — set fixed per connection), per-entity capture
+      (tone or mic, EC/NS/AGC off) + binaural playout, shared 2D
+      space map (presence roster + own entities draggable; capturing
+      entities send pose via the SAB cell, others as pose-only
+      mono-object packets; yaw slider), state panel (live store
+      table + set/clear), diagnostics strip (jitter fill/L/H/
+      underruns, Tap B, device latencies). SDK gained
+      `src/index.ts` (public surface — the packaging seam).
+      Smoke-tested end-to-end via scripted Chromium + fake mic
+      against a real server: connect → tone capture → listen (fill
+      14.3 ms, 0 underruns, TapB energetic) → SECOND simultaneous
+      capture (fake mic) → pose drag → state table shows admission
+      keys → clean disconnect. Vite fs.allow needed for the
+      out-of-root SDK worker file.
+      INVENTORY HALF DONE 2026-08-05 — D4 COMPLETE:
+      `lasa/plan/feature-parity-inventory.md` (I-A), built from a
+      full code-verified survey of panaudia@fd76cc8 (banner env
+      block, endpoints, 20-command catalog, hardcoded role table,
+      Link/ROC surface, deploy artifacts) vs panaudia-server@
+      09770ac. Survey's sharpest finds: PANAUDIA_TLS_CTR_PATH typo
+      is product surface; documented MOQ MaxClients was never
+      enforced; the MixerStats JSON schema is dormant (zero call
+      sites) — the old server's real observability was the banner;
+      Link is unauthenticated by design. Doc classifies every item
+      CARRIED/SUPERSEDED/DROPPED/GAP/OPEN, ends with the §10
+      maintenance-mode bar: health+stats HTTP, LASA ticket
+      ecosystem in panaudia-client, the Link decision (after D5),
+      Safari/Firefox WT validation, prod packaging, Unreal ruling,
+      small sweeps. OPEN rulings queued for Paul: Link/D5,
+      role-targeted moderation, mac-app distribution, egress
+      bitrate pin, older-Safari (no-WT) posture.
+      Post-D4 additions 2026-08-05 (Paul trying the page live):
+      dev.panaudia.com route (vite allowedHosts + page served
+      HTTPS with the wildcard keys — non-localhost HTTP is not a
+      secure context); first real-device latency row appended to
+      latency-baseline.md (~120 ms acoustic loop, output side
+      measured 32 ms, implied input ~25–40 ms); mic-settings
+      read-back logged on capture; microphone selection —
+      `microphone-selection.ts` copied verbatim into the SDK
+      (Bluetooth-avoiding auto-pick, the HFP lesson; PROVENANCE
+      entry incl. the accepted probe trade) + page dropdown with
+      Auto default, manual override tagged [usb]/[builtin]/
+      [bluetooth], devicechange refresh. Smoke suite re-run green
+      through the auto path. Latency-reduction notes discussed:
+      OS input at 48 kHz (Paul's already is);
+      MediaStreamTrackProcessor-in-worker recorded as a future
+      Chromium fast path (~10–20 ms input saving, worklet
+      fallback retained) — not built.
+      JITTER DEBUG SESSION 2026-08-05 (Paul heard clicks + low
+      grit on the page): instrumentation added both sides —
+      browser: worklet discontinuity EVENTS (posted the moment a
+      counter increments, PROVENANCE divergence 6), worker sink
+      INGRESS health (seq gaps/lost/reorder/decode-err, ~2 s),
+      capture-ring overflow watch, all surfaced on the page;
+      server: engine Source.JitterStats() (v3 snapshot),
+      PANAUDIA_STATS_SEC (≤15 s ⇒ per-entity jbuf+dep detail
+      lines). DIAGNOSIS from Paul's live data: uplink clean
+      (dep lost=0); server ingest CHURN — browser worker-paced
+      send bursts (~10–15 ms) clipping the native-tuned band
+      (H=W=5 ms): ~30 drop-splices/2 s window (the grit) whose
+      deficit starved the floor (underrun clicks ~1/2 s); v3
+      controller correctly refused to widen (one-sided drops =
+      its drift classifier — same June-2026 reader-burst
+      confusion, writer side). Initial clock-drift theory
+      FALSIFIED by the clean browser-side event log. FIX: engine
+      SourceConfig gained JitterLowMin/HighInit/HighMin/HighMax;
+      panaudia-server EntityJoined sets the browser-sender
+      profile 10/7/16/14/30 ms (June values mirrored; H is
+      capacity-only, LowMin is the latency knob). Cost measured
+      + appended to latency-baseline.md: server chirp 30.2 →
+      35.2 ms warm-start (fill 16 ms settling to 13; residual
+      unchanged). Controller idea RECORDED (Paul's ask):
+      panaudia-engine/plan/jitter-v3-burst-aware-widening.md
+      (underruns-as-late-side-signal + window fill-swing
+      discriminators; re-entry trigger = a third hand-tuned
+      environment). All suites green post-change (engine,
+      server -short + chirp, 6 Playwright, 144 vitest).
+      AWAITING: Paul's re-test — expect drops ≈ 0; any steady
+      one-sided residue is true clock drift, now separable.
 - [ ] D5 (recorded 2026-08-05, Paul's browser-replaces-native
       insight) — two capabilities the protocol already carries:
       (a) BROWSER AS AMBI RECEIVER, replacing the old native macOS

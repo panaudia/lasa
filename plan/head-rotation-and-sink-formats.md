@@ -273,6 +273,77 @@ architecture change. The client-side residual-rotation rule would ship
 as a non-normative note (same spirit as the catch-up strategies note in
 `state-reconnect-and-gc.md`).
 
+## Server-side pose prediction (dead reckoning) — idea added 2026-08-05
+
+*Context for this entry: the TS client's browser latency harness
+(latency-baseline.md, 2026-08-05 rows) measured the sink-pose loop at
+50–53 ms to the render point on loopback; with realistic network
+(~40 ms RTT) and device output latency the estimated real-world
+head-rotation loop is ~120 ms — usable for audio-only listening, above
+the critical-listener thresholds in §"The dilemma". The rendering
+stays server-side, so the whole bilateral/near-field advantage is
+kept; this idea attacks the residual latency without moving any
+rendering to the client.*
+
+**The idea (Paul).** Game netcode routinely dead-reckons *other*
+players from previous positions, timings, velocities, and expected
+behaviour patterns. Invert it: the **server predicts each listener's
+own head pose ~one loop-latency ahead** (per-client horizon ≈ uplink
++ render + downlink + playout fill + device output, i.e. the ~100 ms
+the listener will wait to hear this frame) and renders the sink with
+the predicted pose. If prediction is good, perceived rotation latency
+collapses toward zero while the architecture stays exactly as built.
+
+**Why it might work.** The server already has the ideal inputs: a
+5 ms-cadence pose stream per entity (the SAB-fresh client stamping
+means samples are near-sensor-fresh), so angular velocity/acceleration
+are directly estimable. VR compositors do precisely this at 20–30 ms
+horizons as standard practice; 100 ms is more ambitious but head
+motion is favourable material — mostly stillness (prediction trivially
+exact), and turns are ballistic with stereotyped bell-shaped velocity
+profiles rather than white noise. Literature on head-motion prediction
+(Kalman / polynomial extrapolation) reports usable errors at ~100 ms
+horizons during motion, near-zero at rest.
+
+**Expected failure mode.** Overshoot at turn onset/stop — naive
+constant-velocity extrapolation at 100 ms with peak head velocities of
+300–800°/s can err by tens of degrees for a few frames. Whether
+overshoot-then-settle *sounds worse than* honest lag is a perceptual
+question, not an engineering one (plausibly: overshoot during fast
+motion is masked by the motion itself — same regime where the
+detection thresholds are most forgiving per Lindau's velocity-scaled
+budget; but it must not breathe at rest, so any predictor needs a
+stillness gate / velocity-scaled blend to zero horizon).
+
+**Cost.** Server compute is negligible: per sink per tick, a velocity
+estimate + one quaternion (or yaw-dominant) extrapolation — a handful
+of scalar ops against a measured render budget of 1.08 ms/tick at
+50×50. The real costs are (a) tuning/validation effort, (b) a
+per-client horizon estimate — RTT is observable at the transport, but
+playout fill + device output latency live client-side, so the client
+should report its render-point + device latency (a state key or config
+field; the TS client can already measure both), and (c) the perceptual
+evaluation itself.
+
+**Cheap first evaluation (no server changes).** Record real
+head-tracking traces (or reuse published datasets), run offline
+extrapolation at 50/100/150 ms horizons, and plot angular-error
+distributions during still/slow/fast segments. That prices the idea
+before any engine work. Second step if it survives: a client-side
+mirror experiment — apply the same predictor to `setPose` in the TS
+client (prediction lever 1 from the latency discussion) — which needs
+no server change at all and A/B's by ear with the artificial-delay
+knob. Server-side then only wins over client-side prediction by using
+fresher samples (it predicts from poses ~half a loop newer) and by
+centralising the tuning.
+
+**Interaction with this doc's trade space.** If prediction holds up
+perceptually at ~100 ms horizons, it further weakens the case for
+mandatory client-side rotation formats (bilateral streaming / the
+sidecar) as *latency* solutions — they would remain quality/bandwidth
+plays only. It composes with, rather than competes against, the
+existing candidates.
+
 ## What would discriminate — the pending evaluations
 
 In leverage order:

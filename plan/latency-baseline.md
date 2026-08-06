@@ -79,6 +79,7 @@ Commits name the repo HEADs the measurement ran on.
 | 2026-07-31 | engine only (PCM in → opus out; **20 ms ingest packets**, then-default W=20 ms) | **18.7 ms** | 11.0 ms | 7.7 ms | engine pre-`ac7d9d3` | `engine/latency_test.go` `TestAudioLatencyChirp` |
 | 2026-08-04 | full server (client opus → QUIC → server → QUIC → client opus; **5 ms frames**, W=5 ms) | **30.2 ms** (1451 smp) | 11.0 ms (528 smp) | 19.2 ms (923 smp) | lasa `b800929`, engine `ac7d9d3`, server `1def4fa` + S6 working tree | `panaudia-server/harness_test.go` `TestServerAudioLatencyChirp` |
 | 2026-08-04 | engine only (**5 ms packets**, new default W=5 ms) | **18.7 ms** (899 smp) | 11.0 ms (528 smp) | 7.7 ms (371 smp) | engine `ac7d9d3` + default-change working tree | `TestAudioLatencyChirp` |
+| 2026-08-05 | full server, **after the browser-sender ingest retune** (per-source LowInit 10/LowMin 7 ms + deep H, panaudia-server EntityJoined; jitter-debug session — see the engine plan's burst-aware-widening note) | **35.2 ms** (1691 smp) | 16.0 ms (768 smp, warm-start L=10; settles to 13 ms as L→7) | 19.2 ms (923 smp, unchanged) | engine/server working trees post-retune | `TestServerAudioLatencyChirp` |
 
 Reading the rows against each other: the **server loop adds
 ~11.5 ms over the engine loop**, which is the speaking client's own
@@ -92,6 +93,41 @@ The 20 ms-vs-5 ms engine rows also establish a useful fact: on a
 clean feed the adaptive steady-state fill is **geometry-independent**
 (528 samples both ways) — packet size buys coherence granularity
 (see the pose table), not fill depth.
+
+### Browser client (TS SDK, Phase D — full loop to the RENDER point)
+
+Measured in the playout worklet's rendered output via ~16 ms stats
+windows (resolution ± one window); **excludes the device DAC stage**
+(headless Chromium reported baseLatency 5.3 ms + outputLatency 24 ms
+— virtual; measure on real devices separately). Loop: capture worklet
+→ SAB ring → worker Opus encode (5 ms) → loopback WT/QUIC → server →
+WT/QUIC → worker decode → SAB jitter ring → worklet render. Both
+browser jitter terms included (server ingest ~11 ms + browser playout
+~13 ms operating fill).
+
+| Date | Path | Result (3 runs) | Commits | Harness |
+|---|---|---|---|---|
+| 2026-08-05 | mouth-to-ear onset, browser full loop | **46–62 ms** (61.8 / 45.7 / 61.6) | lasa `720c0c1`, engine `88f7008`, server `09770ac`, panaudia-client `824872c` + D3 working tree | `typescript-lasa/tests/latency.spec.ts` (`__latencyRun`) |
+| 2026-08-05 | sink pose flip (head turn, SAB pose cell path), browser full loop | **50–53 ms** (53.0 / 49.8 / 51.8) | as above | same |
+| 2026-08-05 | mouth-to-ear **with real devices** (acoustic loop: click → built-in mic → full loop → speakers → recorded echo), dev Mac, Chrome, lasa-test-page | **~120 ms** (single measurement, Paul) | as above + D4 working tree | manual — the §4 clap-and-listen recipe |
+
+The real-device row closes the [C] stages on this machine: the page's
+graph report gave the output side directly (baseLatency 5.3 ms +
+outputLatency 27.0 ms ≈ 32 ms), the harness rows give the loop to the
+render point (46–62 ms), so the implied INPUT side (mic → ADC → OS →
+getUserMedia delivery) is **~25–40 ms** — the one stage no browser API
+reports. Device tax on this machine ≈ 60 ms of the 120 ms total; a
+USB interface would reclaim ~20–30 ms of it.
+
+Cross-check against the Go rows: browser mouth-to-ear ≈ Go server
+30.2 ms + browser playout jitter ~13 ms + capture-worklet/quantum
+~5 ms + detection bias ≤ 1 window — the stages account for the
+number. The pose flip ≈ pose→packet ≤ 5 ms + server 15 ms + playout
+jitter 13 ms + ≤ 2 windows detection — the sink-pose fast path stays
+well clear of tracking the full audio latency. Note the pose result
+rides the freshest-pose SAB seqlock (framing-time stamping): the
+listener entity ran a silent capture pipeline precisely so its pose
+took the real head-tracked-client path.
 
 ### Pose
 
@@ -163,7 +199,11 @@ live**. Given a complaint "audio feels late" on a real deployment:
    sync → that is the audio latency by design (§1); fixing it means
    fixing the audio path, not the pose path.
 
-What this file cannot yet decompose: the client-owned ends (capture
-and playback buffering). When the TS client (Phase D) exists it
-should grow its own harness and rows here, closing the last [C]
-gaps.
+The TS client's harness (browser rows above) now closes most of the
+[C] gaps: its loop includes real capture buffering (worklet + SAB
+ring) and real playback buffering (the browser's own v3 jitter ring).
+Re-run it with `npx playwright test tests/latency.spec.ts` in
+`panaudia-client/sdks/typescript-lasa` (numbers print in the spec
+output; append rows per machine/commit). Still outside the rows: the
+device DAC stage (`outputLatency` — read it from the harness output's
+graph report on real hardware) and real network.
