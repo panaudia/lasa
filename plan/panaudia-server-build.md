@@ -804,6 +804,20 @@ for any engine Layer-1 divergence; Paul's git.
       needs nothing (entities are entities; the S4 state plane
       gives per-stem control). Both hinge on D3's
       multi-entity-first shape.
+- [x] Pose establishment (2026-08-06, closing the spatial-rendering
+      session's OPEN item): entities now exist where the map draws
+      them from the first frame. The protocol always supported it —
+      entity.schema.json `initial-pose`, resolved to home + engine
+      InitialPose + presence seed; the page just never sent it. FIX:
+      (a) test page sends each entity's pose as `initial-pose` at
+      CLIENT_SETUP (SDK passed it through verbatim already); (b) new
+      presence.Slot.Pose() getter (lasa); (c) addPoseSink seeds a
+      late-attached sink with the entity's latest pose before it
+      joins the fan-out list (single-writer rule preserved — seed
+      happens before Frame() can see the sink), so a never-dragged
+      listener renders with its declared attitude. Test:
+      TestAddPoseSinkSeedsLatestPose. Verified: server -short,
+      6 Playwright e2e, page tsc.
 - [ ] Jitter-buffer burst behaviour redesign (TODO 2026-08-06,
       Paul's call after the day's investigation) — v3's re-entry
       trigger fired: four burst environments now known (browser

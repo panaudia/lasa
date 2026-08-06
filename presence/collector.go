@@ -46,6 +46,15 @@ func (s *Slot) UpdatePose(p wire.Pose) {
 	s.mu.Unlock()
 }
 
+// Pose returns the latest recorded pose (the initial pose until the
+// first UpdatePose). For consumers that need the entity's current pose
+// outside the sampling cadence — e.g. seeding a late-attached sink.
+func (s *Slot) Pose() wire.Pose {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.pose
+}
+
 func (s *Slot) sample() Entry {
 	s.mu.Lock()
 	e := Entry{EntityID: s.id, Pose: s.pose, HeadFrame: s.headFrame}
