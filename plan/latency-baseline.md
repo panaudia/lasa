@@ -116,8 +116,10 @@ graph report gave the output side directly (baseLatency 5.3 ms +
 outputLatency 27.0 ms ≈ 32 ms), the harness rows give the loop to the
 render point (46–62 ms), so the implied INPUT side (mic → ADC → OS →
 getUserMedia delivery) is **~25–40 ms** — the one stage no browser API
-reports. Device tax on this machine ≈ 60 ms of the 120 ms total; a
-USB interface would reclaim ~20–30 ms of it.
+reports. *(Superseded 2026-08-07: the CoreAudio probe measured the
+built-in mic's input side at ~56 ms — stream latency alone is 50 ms
+of driver DSP — putting the device tax at ~78 ms of the 120, not
+~60. See the acoustic-loops section below.)*
 
 Cross-check against the Go rows: browser mouth-to-ear ≈ Go server
 30.2 ms + browser playout jitter ~13 ms + capture-worklet/quantum
@@ -128,6 +130,81 @@ well clear of tracking the full audio latency. Note the pose result
 rides the freshest-pose SAB seqlock (framing-time stamping): the
 listener entity ran a silent capture pipeline precisely so its pose
 took the real head-tracked-client path.
+
+### Real-device acoustic loops, browser vs native (2026-08-06/07)
+
+Clap-and-listen (§4 recipe) on the dev Mac, same server, two clients
+— Chrome + lasa-test-page vs **panaudia-bridge** (`cmd/headless
+-echo`, the native Go client; raw QUIC, so it gets the per-route
+native ingest band) — across two device sets. Single measurements by
+Paul; ±5 ms honesty bars.
+
+| Date | Client | Devices | Clap→echo |
+|---|---|---|---|
+| 2026-08-05 | Chrome | built-in mic + speakers | **~120 ms** |
+| 2026-08-06 | panaudia-bridge | built-in mic + speakers | **~110 ms** |
+| 2026-08-07 | Chrome | Scarlett 4i4 (USB) | **~75 ms** |
+| 2026-08-07 | panaudia-bridge | Scarlett 4i4 (USB) | **~65 ms** |
+
+**The device floor, measured** (`panaudia-bridge/cmd/audioprobe` —
+read-only CoreAudio properties per side: io buffer + device latency +
+safety offset + stream latency):
+
+- **Built-ins**: ~89 ms idle / **~78 ms running** (240-frame
+  buffers). The elephant is the **MacBook Pro microphone's stream
+  latency: 2399 frames = 50 ms** (driver DSP) — not the speakers
+  (~22 ms running, matching Chrome's reported outputLatency 27 ms at
+  idle buffers). This kills the 08-05 guess of "implied input
+  25–40 ms": the input side is ~56 ms and the browser row's device
+  tax was ~78, not ~60.
+- **Scarlett 4i4**: 25.0 ms idle (512-frame default io buffers) —
+  intrinsic device+safety only **~3.7 ms total**, stream latency 0.
+  Running floor **~14 ms** *if* the 240-frame request is granted
+  over USB (unverified — see open item).
+
+**Reconciliation.** Built-ins: bridge 110 − 78 floor = **~32 ms
+native stack** (ingest ~11 + tick ~2.5 + client jbuf ~6 + codec ×2
+~5 + callback/queueing ~7) — accounted. Chrome 120 on the same floor
+⇒ browser stack ~42 ms; the native advantage measured **~10 ms** on
+both device sets.
+
+**Scarlett open item RESOLVED (2026-08-07, 8.7-minute `-echo` soak):**
+
+```
+cap: cb=103997 sizes=240×103997 maxGap=5.1ms dropped=0
+jbuf: fill=18.0ms L=2.0 H=5.0 und=9 ovr=3 ins=8 drop=516
+```
+
+- `sizes=240×103997` — the 5 ms buffer IS granted over USB,
+  unconditionally, for ~104k straight callbacks (and maxGap 5.1 ms:
+  USB pacing as clean as built-in). The 512 in the idle probe was
+  just the resting default.
+- `drop=516 / ins=8` over ~520 s — one-sided ⇒ **true clock drift,
+  ~21 ppm** (Scarlett DAC vs server clock; one frame shed per
+  second), digested silently by the ±1 corrector; the controller
+  correctly refused to widen. Third real clock pair observed (after
+  builtin-ADC ~30 ppm at the server ingest, 2026-08-06).
+- `fill=18.0` with T = 8 — **under sustained drift the playout
+  buffer's equilibrium is the DROP LINE (T+W+H = 18 ms), not the
+  target**: drops only fire above the line, so drift parks fill
+  there, costing +10 ms vs target. Recorded as a design observation
+  in the jitter TODO (`jitter-v3-burst-aware-widening.md`).
+
+Revised Scarlett ledger: 65 = floor ~14 + ingest ~11 + tick ~2.5 +
+**jbuf at drift equilibrium ~18** + codec ×2 ~5 + queueing ~5 +
+acoustic ~3 ≈ 58–60; the remaining ~5 ms is USB latency the
+CoreAudio properties don't declare. Fully accounted. Note the drift
+equilibrium means a drift-free pairing (or a drift-aware re-centre,
+see the TODO) would read ~55 ms on this hardware.
+
+Headlines: server-side spatial rendering delivers **65 ms
+mouth-to-ear through a USB interface** (native) and 75 ms in
+Chrome — both well inside the perceptual budget that motivated the
+architecture; add real-network RTT on top. On built-ins both clients
+are device-floor-bound and the browser is entirely adequate. The
+native client's structural advantages (clean pacing → shallow server
+band, no GC-stall class) matter beyond this single-machine number —
+see `spike-native-audio/README.md` and the feasibility doc §4.
 
 ### Pose
 
@@ -171,6 +248,16 @@ Append a dated row per run worth keeping (new machine, new commit of
 any of the three repos, changed jitter geometry or codec settings —
 say what changed). The production x86 box needs its own first rows
 when it exists.
+
+Real-device acoustic rows (the client-vs-client table above):
+
+```sh
+# device floor first (read-only CoreAudio properties, no mic access):
+cd panaudia-bridge && go run ./cmd/audioprobe
+# native client echo loop (hear your own mic; clap, measure in Audacity):
+go run ./cmd/headless -echo -in <name> -out <name>
+# browser: lasa-test-page + the §4 clap-and-listen recipe
+```
 
 ## 4. Debugging a client's latency
 

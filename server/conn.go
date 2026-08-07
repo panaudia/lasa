@@ -36,6 +36,12 @@ type connSession struct {
 	binding  *ident.Binding
 	econn    *state.Conn
 
+	// transport is the connection's transport kind ("quic" |
+	// "webtransport"), set by ServeConn before the session runs and
+	// stamped onto Resolved for the backend (a route signal — browsers
+	// can only be webtransport).
+	transport string
+
 	// handlers maps track alias → EntityHandler; copy-on-write so the
 	// datagram hot path is a single atomic load + map read.
 	handlers atomic.Pointer[map[uint64]EntityHandler]
@@ -86,6 +92,7 @@ func (cs *connSession) onClientSetup(params moqtransport.KVPList) error {
 	if rej != nil {
 		return setupRejection(rej)
 	}
+	res.Transport = cs.transport
 	// Moderation gate BEFORE Admit (design §7, the KickGate lesson): a
 	// blocked id's reconnect can never reach eviction logic.
 	if rej := cs.srv.gate.check(res); rej != nil {

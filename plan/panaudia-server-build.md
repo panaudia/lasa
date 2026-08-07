@@ -818,6 +818,19 @@ for any engine Layer-1 divergence; Paul's git.
       listener renders with its declared attitude. Test:
       TestAddPoseSinkSeedsLatestPose. Verified: server -short,
       6 Playwright e2e, page tsc.
+- [x] Per-route ingest profiles (2026-08-06, shipped as part of the
+      panaudia-bridge tuning pass — the jitter TODO's "route
+      profiles" interim, server side): the transport is the
+      sender-class signal (browsers can only be WebTransport; raw
+      QUIC = native). Plumbing: moqtransport conn.Protocol() →
+      connect.Resolved.Transport (new field, stamped by the shell's
+      ServeConn/onClientSetup) → backend records per-client at
+      Admit → EntityJoined gives WT senders the browser burst band
+      (10/7/16/14/30) and raw-QUIC senders the engine's native
+      defaults; record cleared with the client's last entity.
+      Verified: lasa server+connect tests, panaudia-server -short,
+      chirp harness (raw QUIC) recovered 35.2 → 30.2 ms while
+      browser protection is unchanged.
 - [ ] Jitter-buffer burst behaviour redesign (TODO 2026-08-06,
       Paul's call after the day's investigation) — v3's re-entry
       trigger fired: four burst environments now known (browser
@@ -830,14 +843,17 @@ for any engine Layer-1 divergence; Paul's git.
       (2026-08-06 addendum). Fixed en route: PoseCell unbounded
       seqlock spin (bounded-retry read + test), instrumentation
       feedback loop (summarised logging).
-- [ ] Bluetooth HFP collapse + mic selection (parked 2026-08-06,
-      investigated not fixed) — LASA page's mic-auto reintroduced
-      the device-opening selection flow the old client removed
-      2026-06-11 (priming + unknown-device probe can open the
-      AirPods mic ⇒ HFP), and the old post-connect HFP banner was
-      not ported. Findings, diagnosis steps (console
-      [MicSelection] discriminator) and candidate fixes:
-      bluetooth-hfp-todo.md.
+- [x] Bluetooth HFP collapse + mic selection (parked then FIXED
+      2026-08-06) — LASA page's mic-auto had reintroduced the
+      device-opening selection flow the old client removed
+      2026-06-11. All three fixes landed: selection never opens a
+      device (priming + unknown-probe removed, `permissionPending`
+      contract); first-grant Bluetooth recovery in the test page
+      (open default once, re-select and switch when it proves BT);
+      post-hoc HFP detection restored (probeOutputDeviceSampleRate
+      ported to the LASA SDK + page banner with recovery advice).
+      Divergence recorded in SDK PROVENANCE.md; evidence retained
+      in bluetooth-hfp-todo.md (now marked DONE).
 
 ## Deferred beyond this plan
 WebTransport;

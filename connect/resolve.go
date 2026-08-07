@@ -27,6 +27,13 @@ type Resolved struct {
 	Roles       []string
 	Permissions Permissions
 	Entities    []ResolvedEntity
+	// Transport is the connection's transport kind, stamped by the
+	// server shell after resolution: "quic" (native clients) or
+	// "webtransport" (browsers can use nothing else). Backends may use
+	// it as a route signal — e.g. sizing ingest jitter bounds to the
+	// sender class. Empty in unit contexts that never touch a
+	// transport.
+	Transport string
 }
 
 // Resolve applies the entity/setup rules of lasa-core.md §4.2 to a parsed

@@ -241,6 +241,7 @@ func (s *Server) ServeQUIC(l *quic.Listener) error {
 // guaranteed teardown signal (invariant L5).
 func (s *Server) ServeConn(transportCtx context.Context, conn moqtransport.Connection) error {
 	cs := newConnSession(s)
+	cs.transport = conn.Protocol().String()
 	go func() {
 		select {
 		case <-transportCtx.Done():

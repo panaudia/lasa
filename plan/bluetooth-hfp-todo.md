@@ -1,10 +1,30 @@
-# TODO: Bluetooth HFP collapse & microphone selection (parked 2026-08-06)
+# DONE: Bluetooth HFP collapse & microphone selection
 
-*Status: PARKED — investigated, not fixed. Paul hit stereo-to-mono
-collapse with AirPods on the LASA test page where the old client
-preserved stereo; suspected other rendering issues took priority.
-This note records the comparison findings so the fix pass can start
-from evidence, not re-derivation.*
+*Status: **DONE 2026-08-06** — all three candidate fixes below were
+implemented the same day (Paul's ruling after the spatial-rendering
+session closed):*
+
+1. *`selectBestMicrophone` never opens a device: the priming open and
+   the unknown-device sample-rate probe are removed; without
+   permission it returns `permissionPending` and defers to the
+   system default.*
+2. *First-grant recovery in the test page: the unavoidable
+   first-ever open lands on the default; if that proves Bluetooth
+   (label or ≤16 kHz), the page re-selects with labels now readable,
+   releases the BT mic, and re-opens the best non-Bluetooth device.
+   Subsequent sessions never open a BT mic.*
+3. *Post-hoc detection restored: `probeOutputDeviceSampleRate` ported
+   into the LASA SDK (`player.ts`) + page banner (≤24 kHz ⇒ HFP
+   suspected, with the old recovery advice), checked 1 s after a mic
+   opens and every 10 s while audio is active.*
+
+*Divergence from the verbatim copy recorded in the SDK's
+PROVENANCE.md. The findings below are retained as the evidence that
+drove the design.*
+
+*(Original status: PARKED — investigated, not fixed, while rendering
+issues took priority. The notes below record the old-vs-new
+comparison so the fix pass could start from evidence.)*
 
 ## The symptom
 
