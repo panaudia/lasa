@@ -50,7 +50,7 @@ type Client struct {
 	cfg     Config
 	session *moqtransport.Session
 	ctx     context.Context
-	cancel  context.CancelFunc
+	cancel  context.CancelCauseFunc
 
 	mu         sync.Mutex
 	entityPubs map[string]*EntityPublisher
@@ -125,7 +125,7 @@ func start(ctx context.Context, cfg Config, mconn moqtransport.Connection) (*Cli
 	if err != nil {
 		return nil, err
 	}
-	cctx, cancel := context.WithCancel(context.Background())
+	cctx, cancel := context.WithCancelCause(context.Background())
 	c := &Client{
 		cfg:        cfg,
 		ctx:        cctx,
@@ -133,6 +133,17 @@ func start(ctx context.Context, cfg Config, mconn moqtransport.Connection) (*Cli
 		entityPubs: map[string]*EntityPublisher{},
 	}
 	c.entityCond = sync.NewCond(&c.mu)
+	// The transport's context is the guaranteed death signal: when the
+	// underlying connection dies (server gone, network cut), the
+	// client's own context ends with the cause, observable via Done/Err.
+	go func() {
+		tctx := mconn.Context()
+		select {
+		case <-tctx.Done():
+			cancel(context.Cause(tctx))
+		case <-cctx.Done():
+		}
+	}()
 	c.session = &moqtransport.Session{
 		InitialMaxRequestID: 1024,
 		SetupParameters: moqtransport.KVPList{
@@ -145,10 +156,24 @@ func start(ctx context.Context, cfg Config, mconn moqtransport.Connection) (*Cli
 		}),
 	}
 	if err := c.session.RunContext(ctx, mconn); err != nil {
-		cancel()
+		cancel(err)
 		return nil, err
 	}
 	return c, nil
+}
+
+// Done is closed when the connection ends — whether by Close or by the
+// transport dying underneath (server gone, network cut). Err then
+// reports the cause.
+func (c *Client) Done() <-chan struct{} { return c.ctx.Done() }
+
+// Err returns the reason the connection ended (nil while alive;
+// context.Canceled after a local Close).
+func (c *Client) Err() error {
+	if c.ctx.Err() == nil {
+		return nil
+	}
+	return context.Cause(c.ctx)
 }
 
 func configJSON(cfg Config) ([]byte, error) {
@@ -167,7 +192,7 @@ func configJSON(cfg Config) ([]byte, error) {
 
 // Close ends the connection.
 func (c *Client) Close() error {
-	c.cancel()
+	c.cancel(context.Canceled)
 	return c.session.Close()
 }
 

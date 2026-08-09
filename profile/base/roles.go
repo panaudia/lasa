@@ -77,8 +77,8 @@ func RulesFor(res *connect.Resolved) state.Rules {
 
 	if hasRole(res.Roles, RoleProducer) || hasRole(res.Roles, RoleAdmin) {
 		prod := []string{
-			EntityKey("*", "sources"),
-			EntityKey("*", "sinks"),
+			EntityKey("*", "heard-in"),
+			EntityKey("*", "hears"),
 			EntityKey("*", "priority"),
 			RenderGainKey("*"),
 			RenderAttenuationKey("*"),

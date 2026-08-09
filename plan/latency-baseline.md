@@ -206,6 +206,75 @@ native client's structural advantages (clean pacing → shallow server
 band, no GC-stall class) matter beyond this single-machine number —
 see `spike-native-audio/README.md` and the feasibility doc §4.
 
+### Stage table (2026-08-07) — the whole loop, measured
+
+Every stage of §1's model with its measured value, native client,
+loopback network. The protocol-stack row is the chirp harness's
+30.2 ms taken WHOLE (client encode → QUIC → depacketizer → ingest
+jitter → tick → render DSP → sink encode → QUIC → client decode) —
+it already contains both codec passes and the ingest fill, so
+nothing here double-counts.
+
+| # | Stage | Scarlett 4i4 | Built-ins | Source |
+|---|---|---|---|---|
+| 1 | Acoustic gap (clap-test artifact, ~3 ms/m) | ~3 | ~1 | geometry |
+| 2 | Input device (io buffer 5 + device + safety + stream) | 8.4 | 56.0 (50 = mic driver DSP) | `audioprobe`, running buffers |
+| 3 | Capture→frame assembly (0–5 ms quantization) | ~2.5 avg | ~2.5 | design |
+| 4 | Protocol stack: encode → server (ingest ~11 + residual 19.2) → decode | 30.2 | 30.2 | chirp harness (native band; browser band +5) |
+| 5 | Client playout jitter buffer | **18** (drift equilibrium, ~21 ppm) | 6 (near-target) | `-echo` stats; target T = 8 |
+| 6 | Output device (io buffer 5 + device + safety + stream) | 5.6 | 21.6 | `audioprobe`, running buffers |
+| | **Sum** | **~68** | **~118** | |
+| | **Measured clap→echo** | **~65** | **~110** | ±5 ms |
+
+Sums land inside the honesty bars — no unexplained stages remain
+(the ±few ms residue is USB's undeclared transport latency on the
+Scarlett side and measurement resolution). Browser deltas against
+the same skeleton: stage 3 becomes the getUserMedia/worklet pipeline
+(~10–20 ms, unreported by any API), stage 4 uses the browser ingest
+band (+3–5 ms), stage 5 the browser playout band (~13 ms operating)
+— together the measured ~10 ms browser-vs-native gap plus the
+browser's larger share hidden in stage 3.
+
+The two levers this table exposes: stage 5's drift equilibrium
+(+W+H whenever clocks disagree — the jitter TODO's re-centre
+question; worth ~10 ms) and stage 2 on built-ins (the 50 ms mic DSP
+— unfixable, choose hardware accordingly). Everything else is within
+a few ms of its design floor.
+
+### Head-rotation stage table (2026-08-07) — new rotation → hearing it
+
+The rotation path skips the whole input side (no mic, no capture
+assembly) and takes the sink-pose fast path through the server
+(latest-wins, never waits in the ingest jitter buffer) — but pays
+the playout buffer, because the rotated audio rides the ordinary
+rendered stream. Derived entirely from measured stages; native
+client, Scarlett output.
+
+| Stage | Today | With the drift-aware re-centre (jitter TODO §2) |
+|---|---|---|
+| Pose → wire (rides next 5 ms framing / pose-only send) | ~2.5 | ~2.5 |
+| Network up | ~0 loopback | ~0 |
+| Server: apply + render + egress (`TestServerSinkPoseLatency`) | 15 | 15 |
+| Network down | ~0 loopback | ~0 |
+| Client playout jitter buffer | 18 (drift equilibrium) | ~8 |
+| Output device (Scarlett, running) | 5.6 | 5.6 |
+| **Rotation → ear** | **~41 ms** | **~31 ms** |
+
+- The playout buffer sits in BOTH loops, so the re-centre fix pays
+  out twice: mouth-to-ear ~65 → ~55 AND rotation ~41 → ~31.
+- **Deployed, add the full RTT** (pose up + rotated audio down): at
+  a 40 ms RTT, ~70 ms today / ~60 ms with the fix — inside the
+  motion-to-sound budgets surveyed in
+  `head-rotation-and-sink-formats.md`, whose recorded server-side
+  pose-prediction idea (dead reckoning, ~40 ms horizon) exists to
+  cancel most of the RTT term for smooth head motion.
+- Browser comparison: 50–53 ms to the render point on loopback
+  (harness rows above) + ~32 ms output side ≈ **~85 ms** acoustic
+  where the native path is ~41. The rotation path is where the
+  native client's lead is largest — the browser's input-side
+  handicap applies to neither loop, but its worklet quanta and
+  deeper playout band apply to both of its own.
+
 ### Pose
 
 | Date | Path | Result | Commits | Harness |

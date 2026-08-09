@@ -1,5 +1,11 @@
 # Roles
 
+*Rename note (2026-08-09): `sources.{channel-name}` /
+`sinks.{channel-name}` below are now `heard-in.{channel-name}` /
+`hears.{channel-name}` (membership-vs-track-direction collision; see
+the note in `lasa-state-keys.md`). Current names in
+`lasa-base-profile.md` §2/§6.*
+
 - admin
 - presenter 
 - moderator

@@ -7,6 +7,14 @@ is profile vocabulary. Connection-scoped lifetime is likewise profile
 prose — the server sweeps these keys with ordinary `clear` ops on
 disconnect (`core-profile-split.md` §Resolved).*
 
+*Rename note (2026-08-09): the channel-membership keys written below as
+`sources.{channel-name}` / `sinks.{channel-name}` were renamed
+`heard-in.{channel-name}` / `hears.{channel-name}` — the old names
+collided with the core's source/sink track-direction vocabulary and
+were misread (twice, by the author included) as track lists. The spec
+(`lasa-base-profile.md` §6) carries the current names; this doc is
+left as the dated record.*
+
 All `lasa.entity.` and `lasa.space.` prefixed state is structured in a particular way. 
 
 All values are utf-8 encoded and are one of three types:

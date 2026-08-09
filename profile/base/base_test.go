@@ -38,8 +38,8 @@ func TestAdmissionGroupAdHoc(t *testing.T) {
 	want := map[string]string{
 		"lasa.entity.e1":                 "true",
 		"lasa.entity.e1.name":            `"Alice"`,
-		"lasa.entity.e1.sources.main":    "true", // omitted list → effective default (§4)
-		"lasa.entity.e1.sinks.main":      "true",
+		"lasa.entity.e1.heard-in.main":   "true", // omitted list → effective default (§4)
+		"lasa.entity.e1.hears.main":      "true",
 		"lasa.entity.e1.attrs.mood":      `"calm"`,
 		"lasa.entity.e1.attrs.team.name": `"red"`,
 		"lasa.entity.e1.attrs.team.rank": "3",
@@ -89,8 +89,8 @@ func TestAdmissionGroupMaterializesConfig(t *testing.T) {
 			ID:       "e1",
 			Name:     "Desk",
 			Priority: true,
-			Sources:  []string{"stage", "aux"},
-			Sinks:    []string{}, // deliberately none — must write no keys
+			HeardIn:  []string{"stage", "aux"},
+			Hears:    []string{}, // deliberately none — must write no keys
 			Render:   &connect.Render{Gain: &gain, Size: &size},
 			Dof:      &dof,
 		},
@@ -100,14 +100,14 @@ func TestAdmissionGroupMaterializesConfig(t *testing.T) {
 	}
 	m := opsAsMap(t, g)
 	want := map[string]string{
-		"lasa.entity.e1":               "true",
-		"lasa.entity.e1.name":          `"Desk"`,
-		"lasa.entity.e1.sources.stage": "true",
-		"lasa.entity.e1.sources.aux":   "true",
-		"lasa.entity.e1.priority":      "true",
-		"lasa.entity.e1.render.gain":   "2.5",
-		"lasa.entity.e1.render.size":   "0.4",
-		"lasa.entity.e1.dof":           "3",
+		"lasa.entity.e1":                "true",
+		"lasa.entity.e1.name":           `"Desk"`,
+		"lasa.entity.e1.heard-in.stage": "true",
+		"lasa.entity.e1.heard-in.aux":   "true",
+		"lasa.entity.e1.priority":       "true",
+		"lasa.entity.e1.render.gain":    "2.5",
+		"lasa.entity.e1.render.size":    "0.4",
+		"lasa.entity.e1.dof":            "3",
 	}
 	if len(m) != len(want) {
 		t.Fatalf("ops = %v", m)

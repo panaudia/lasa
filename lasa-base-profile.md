@@ -74,8 +74,8 @@ Config (`lasa-core.md` §4.2).
 
 `audience`, plus write:
 
-- `lasa.entity.{entity-id}.sources.{channel-name}` — set, clear
-- `lasa.entity.{entity-id}.sinks.{channel-name}` — set, clear
+- `lasa.entity.{entity-id}.heard-in.{channel-name}` — set, clear
+- `lasa.entity.{entity-id}.hears.{channel-name}` — set, clear
 - `lasa.entity.{entity-id}.priority` — set, clear
 - `lasa.entity.{entity-id}.render.gain` — set, clear
 - `lasa.entity.{entity-id}.render.attenuation` — set, clear
@@ -140,7 +140,9 @@ Servers SHOULD durably persist `lasa.space.*` across restarts.
 
 Sources and sinks are joined by named channels: **source S is audible
 to sink K iff they share at least one channel that is not muted.**
-An entity whose config omits `sources` (resp. `sinks`) gets
+An entity's memberships are directional: `heard-in` lists the channels
+in which its source is heard, `hears` the channels its sink listens
+to. An entity whose config omits `heard-in` (resp. `hears`) gets
 **`["main"]`**; an explicit empty array means deliberately none.
 
 Channels carry optional render overrides, resolved per (source, sink)
@@ -204,8 +206,8 @@ recovery from any block state: an admin can always connect and clear.
 | `lasa.entity.{id}.name` | String | server, from config; immutable |
 | `lasa.entity.{id}.attrs.{attr}` | any §1 type | config; owner at runtime |
 | `lasa.entity.{id}.signed-attrs.{attr}` | any §1 type | server, from ticket; immutable |
-| `lasa.entity.{id}.sources.{channel}` | `true` | config; `producer` |
-| `lasa.entity.{id}.sinks.{channel}` | `true` | config; `producer` |
+| `lasa.entity.{id}.heard-in.{channel}` | `true` | config; `producer` |
+| `lasa.entity.{id}.hears.{channel}` | `true` | config; `producer` |
 | `lasa.entity.{id}.priority` | `true` | config; `producer` |
 | `lasa.entity.{id}.render.gain` | Number 0.0–3.0 | config; `producer` |
 | `lasa.entity.{id}.render.attenuation` | Number 0.0–3.0 | config; `producer` |
@@ -246,7 +248,7 @@ owner-writable at runtime; `signed-attrs` come from inside the signed
 ticket — different authorship guarantee, immutable. Flattening per
 §1.
 
-**`sources.{channel}` / `sinks.{channel}`** — the channels in which
+**`heard-in.{channel}` / `hears.{channel}`** — the channels in which
 this entity is heard / hears. Defaults per §4, applied at admission:
 the server materializes the **effective** membership into these keys —
 an omitted config list is written as `main`, an explicit empty list

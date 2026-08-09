@@ -65,11 +65,11 @@ func AdmissionGroup(e *connect.ResolvedEntity) (wire.Group, error) {
 	ops = append(ops, wire.Set{Key: NameKey(e.ID), Value: name})
 
 	trueLit := []byte("true")
-	for _, ch := range effectiveChannels(e.Sources) {
-		ops = append(ops, wire.Set{Key: SourceChannelKey(e.ID, ch), Value: trueLit})
+	for _, ch := range effectiveChannels(e.HeardIn) {
+		ops = append(ops, wire.Set{Key: HeardInKey(e.ID, ch), Value: trueLit})
 	}
-	for _, ch := range effectiveChannels(e.Sinks) {
-		ops = append(ops, wire.Set{Key: SinkChannelKey(e.ID, ch), Value: trueLit})
+	for _, ch := range effectiveChannels(e.Hears) {
+		ops = append(ops, wire.Set{Key: HearsKey(e.ID, ch), Value: trueLit})
 	}
 	if e.Priority {
 		ops = append(ops, wire.Set{Key: EntityKey(e.ID, "priority"), Value: trueLit})

@@ -344,6 +344,31 @@ sidecar) as *latency* solutions — they would remain quality/bandwidth
 plays only. It composes with, rather than competes against, the
 existing candidates.
 
+**Quantified update (2026-08-07, Paul's arithmetic against the
+measured stage tables in latency-baseline.md).** The rotation loop is
+now measured per client rather than estimated. Local
+(loopback + real output devices): **native ~41 ms** (Scarlett; ~31
+once the jitter TODO's drift-aware re-centre lands), **browser with
+wired headphones ~60–65 ms** (speakers ~85). Deployed adds the FULL
+RTT (pose up + rendered audio down): at 40 ms RTT, browser ~100 ms,
+native ~81. The prediction case this makes:
+
+- A **conservative RTT-sized horizon (~40 ms)** — much easier than
+  the ~100 ms horizon analysed above — cancels the network term and
+  returns each client to its LOCAL latency: **browser ~60–65 ms,
+  which the surveyed thresholds rate generally imperceptible;
+  native ~41→~31, effectively lag-free.** The idea no longer needs
+  the ambitious horizon to clear the perceptual bar.
+- The best case is the common case for this signal: prediction is
+  exact at rest, strong during sustained turns (ballistic,
+  bell-shaped velocity — precisely when lag is most audible, as the
+  image should counter-rotate stably), and errs only at brief
+  direction changes where motion masks the transient.
+- Being server-side, one implementation benefits every client with
+  zero client changes — and it helps most exactly where the budget
+  is tightest (the browser). The full-loop horizon remains available
+  as a second step toward zero perceived lag.
+
 ## What would discriminate — the pending evaluations
 
 In leverage order:

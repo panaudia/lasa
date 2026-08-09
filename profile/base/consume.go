@@ -33,7 +33,7 @@ const (
 )
 
 // DefaultChannels is the membership an entity whose config omits
-// sources (resp. sinks) receives (§4). An explicit empty list means
+// heard-in (resp. hears) receives (§4). An explicit empty list means
 // deliberately none.
 func DefaultChannels() []string { return []string{"main"} }
 
@@ -64,11 +64,12 @@ type EntityRender struct {
 	Value    float64
 }
 
-// ChannelMembership: entity joins/leaves a channel as source or sink.
+// ChannelMembership: entity joins/leaves a channel on the heard-in
+// (being heard) or hears (listening) side.
 type ChannelMembership struct {
 	EntityID string
 	Channel  string
-	Sink     bool // false: sources.*, true: sinks.*
+	Hears    bool // false: heard-in.*, true: hears.*
 	Member   bool
 }
 
@@ -164,10 +165,10 @@ func parseEntityOp(rest string, value []byte, cleared bool) (Event, error) {
 	switch {
 	case strings.HasPrefix(sub, "render."):
 		return parseRender(id, sub[len("render."):], value, cleared)
-	case strings.HasPrefix(sub, "sources."):
-		return parseMembership(id, sub[len("sources."):], false, value, cleared)
-	case strings.HasPrefix(sub, "sinks."):
-		return parseMembership(id, sub[len("sinks."):], true, value, cleared)
+	case strings.HasPrefix(sub, "heard-in."):
+		return parseMembership(id, sub[len("heard-in."):], false, value, cleared)
+	case strings.HasPrefix(sub, "hears."):
+		return parseMembership(id, sub[len("hears."):], true, value, cleared)
 	case strings.HasPrefix(sub, "mute."):
 		on, err := parseFlag(value, cleared)
 		return PersonalMute{OwnerID: id, OtherID: sub[len("mute."):], On: on}, err
@@ -223,9 +224,9 @@ func parseRender(id, field string, value []byte, cleared bool) (Event, error) {
 	return EntityRender{EntityID: id, Field: f, Value: n}, nil
 }
 
-func parseMembership(id, channel string, sink bool, value []byte, cleared bool) (Event, error) {
+func parseMembership(id, channel string, hears bool, value []byte, cleared bool) (Event, error) {
 	member, err := parseFlag(value, cleared)
-	return ChannelMembership{EntityID: id, Channel: channel, Sink: sink, Member: member}, err
+	return ChannelMembership{EntityID: id, Channel: channel, Hears: hears, Member: member}, err
 }
 
 func parseSpaceOp(rest string, value []byte, cleared bool) (Event, error) {

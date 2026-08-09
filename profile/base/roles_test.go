@@ -72,8 +72,8 @@ func TestRulesFor(t *testing.T) {
 			name: "producer: any entity's routing and render keys, the space channel keys",
 			res:  resolved(true, []string{RoleProducer}, "e1"),
 			checks: []check{
-				{"lasa.entity.e2.sources.main", true, true, true},
-				{"lasa.entity.e2.sinks.aux", true, true, true},
+				{"lasa.entity.e2.heard-in.main", true, true, true},
+				{"lasa.entity.e2.hears.aux", true, true, true},
 				{"lasa.entity.e2.priority", true, true, true},
 				{"lasa.entity.e2.render.gain", true, true, true},
 				{"lasa.entity.e2.render.attenuation", true, true, true},

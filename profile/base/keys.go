@@ -10,8 +10,8 @@ func RenderAttenuationKey(id string) string { return EntityKey(id, "render.atten
 func RenderSizeKey(id string) string        { return EntityKey(id, "render.size") }
 func RenderDirectivityKey(id string) string { return EntityKey(id, "render.directivity") }
 
-func SourceChannelKey(id, channel string) string { return EntityKey(id, "sources."+channel) }
-func SinkChannelKey(id, channel string) string   { return EntityKey(id, "sinks."+channel) }
+func HeardInKey(id, channel string) string { return EntityKey(id, "heard-in."+channel) }
+func HearsKey(id, channel string) string   { return EntityKey(id, "hears."+channel) }
 
 func PersonalMuteKey(owner, other string) string { return EntityKey(owner, "mute."+other) }
 func PersonalSoloKey(owner, other string) string { return EntityKey(owner, "solo."+other) }

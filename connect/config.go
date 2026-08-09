@@ -30,8 +30,8 @@ type Entity struct {
 	ID          string         `json:"id"`
 	Name        string         `json:"name"`
 	Priority    bool           `json:"priority,omitempty"`
-	Sources     []string       `json:"sources,omitempty"`
-	Sinks       []string       `json:"sinks,omitempty"`
+	HeardIn     []string       `json:"heard-in,omitempty"`
+	Hears       []string       `json:"hears,omitempty"`
 	Attrs       map[string]any `json:"attrs,omitempty"`
 	Frame       string         `json:"frame,omitempty"`
 	Dof         *int           `json:"dof,omitempty"`

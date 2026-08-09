@@ -20,7 +20,7 @@ func TestParseConnectionConfigValid(t *testing.T) {
 			  "setups":[{"id":"e1","attrs":{"mood":"calm"},
 			             "initial-pose":{"position":{"x":1,"y":2,"z":3}}}],
 			  "entities":[{"id":"e2","name":"Bob","priority":true,
-			               "sources":["main","stage"],"sinks":["main"],
+			               "heard-in":["main","stage"],"hears":["main"],
 			               "attrs":{"team":{"name":"red","rank":3}},
 			               "frame":"head","dof":3,
 			               "initial-pose":{"attitude":{"yaw":0,"pitch":0,"roll":0}},

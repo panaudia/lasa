@@ -26,8 +26,8 @@ func TestParseOpTable(t *testing.T) {
 		{RenderAttenuationKey("e1"), "", true, EntityRender{"e1", FieldAttenuation, 2.0}},
 		{RenderSizeKey("e1"), "1.5", false, EntityRender{"e1", FieldSize, 1.5}},
 		{RenderDirectivityKey("e1"), "", true, EntityRender{"e1", FieldDirectivity, 0}},
-		{SourceChannelKey("e1", "stage"), "true", false, ChannelMembership{"e1", "stage", false, true}},
-		{SinkChannelKey("e1", "stage"), "", true, ChannelMembership{"e1", "stage", true, false}},
+		{HeardInKey("e1", "stage"), "true", false, ChannelMembership{"e1", "stage", false, true}},
+		{HearsKey("e1", "stage"), "", true, ChannelMembership{"e1", "stage", true, false}},
 		{PersonalMuteKey("e1", "e2"), "true", false, PersonalMute{"e1", "e2", true}},
 		{PersonalSoloKey("e1", "e2"), "", true, PersonalSolo{"e1", "e2", false}},
 		{DofKey("e1"), "3", false, Dof{"e1", 3}},
@@ -65,8 +65,8 @@ func TestParseOpInvalid(t *testing.T) {
 		{RenderGainKey("e1"), "3.5"}, // above range
 		{RenderGainKey("e1"), "-1"},  // below range
 		{RenderDirectivityKey("e1"), "2"},
-		{RenderGainKey("e1"), `"loud"`},        // wrong type
-		{SourceChannelKey("e1", "x"), "false"}, // flags are literally true
+		{RenderGainKey("e1"), `"loud"`},  // wrong type
+		{HeardInKey("e1", "x"), "false"}, // flags are literally true
 		{DofKey("e1"), "4"},
 		{FrameKey("e1"), `"screen"`},
 		{ClientBlockedKey("c1"), "-5"},
