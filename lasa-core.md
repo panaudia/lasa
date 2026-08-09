@@ -143,6 +143,16 @@ permitted (each pays its own encode); switching formats is
 subscribe-new-then-unsubscribe-old, with both flowing during the
 overlap. Any limits on concurrency are deployment policy.
 
+> *Note (capability is exercised, not declared): an entity never
+> declares whether it acts as a source or a sink — the Connection
+> Config deliberately carries no such field. An entity is a source by
+> publishing on its source track and a listener by holding a sink
+> subscription, and either may begin or end at any moment in the
+> session. A declaration could only restate observable behaviour or
+> contradict it, and every contradiction would need an adjudication
+> rule. Entities that stay silent, never subscribe, or publish pose
+> without audio are ordinary cases, not special ones.*
+
 ## 4. Connection
 
 ### 4.1 The Connection Config rides CLIENT_SETUP
