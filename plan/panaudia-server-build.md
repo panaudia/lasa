@@ -190,6 +190,11 @@ for any engine Layer-1 divergence; Paul's git.
       `RulesFor`/`AdHocPermitted`/`SinkAll` wired to `profile/base`;
       `AllowUnticketed` explicit (`PANAUDIA_ALLOW_UNTICKETED`,
       default true iff no ticket key)
+      — *revised 2026-08-09 (Paul's ruling: a space is either
+      ticketed or open, never open by accident): key + allow=true is
+      now a startup error, and an open space requires the explicit
+      `PANAUDIA_ALLOW_UNTICKETED=true` (no key present no longer
+      defaults open); matrix in `config_test.go`*
 - Enablers (each a spec edit folded in place + code):
   - core §6.4 gained `*`-segment scopes (one wildcard segment = one
     identifier segment) — moderator's any-entity dof and producer's

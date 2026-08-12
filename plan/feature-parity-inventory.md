@@ -32,7 +32,7 @@ fixed pool sizes.
 | `PANAUDIA_TLS_CTR_PATH` / `_TLS_KEY_PATH` | `PANAUDIA_CERT` / `PANAUDIA_KEY` | CARRIED (renamed — migration table §9 must map the old **typo'd** name) |
 | `PANAUDIA_TLS_AUTOGEN` | implicit: unset cert ⇒ ephemeral self-signed + logged cert hash | CARRIED (new one is in-memory, never written to disk — better for dev, but operators who relied on the written files should use real certs) |
 | `PANAUDIA_TICKET_KEY_PATH` (Ed25519 PEM file) | `PANAUDIA_TICKET_KEY` (base64 raw 32 B value) | CARRIED (renamed + format change; §9) |
-| `PANAUDIA_UNTICKETED` | `PANAUDIA_ALLOW_UNTICKETED` (default true iff no key) | CARRIED |
+| `PANAUDIA_UNTICKETED` | `PANAUDIA_ALLOW_UNTICKETED` (explicit opt-in since 2026-08-09; exactly one of key / opt-in) | CARRIED |
 | `PANAUDIA_SPACE_ORDER` | `PANAUDIA_ORDER` (2–5; ambi offering derives) | CARRIED |
 | `PANAUDIA_SPACE_MAX_SOURCES` (documented cap unenforced) | `PANAUDIA_MAX_ENTITIES` (enforced at admission, 0x1A5A05 at capacity) | CARRIED (and now real) |
 | `PANAUDIA_REVERB_PRESET` (int 0–5, undocumented beyond 0) | `PANAUDIA_REVERB` (named: none/tight-room/small-room/medium-room/large-hall/cathedral) | CARRIED (named presets; **default differs**: old default 0=none, new default medium-room — §9 migration note) |

@@ -32,9 +32,8 @@ const (
 	DefaultChannelGain = 1.0   // unset channel gain is the identity (§4)
 )
 
-// DefaultChannels is the membership an entity whose config omits
-// heard-in (resp. hears) receives (§4). An explicit empty list means
-// deliberately none.
+// DefaultChannels is the membership an entity whose config omits — or
+// explicitly empties — heard-in (resp. hears) receives (§4).
 func DefaultChannels() []string { return []string{"main"} }
 
 // ErrInvalidValue marks a recognised key carrying a value outside the

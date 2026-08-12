@@ -121,9 +121,12 @@ func AdmissionGroup(e *connect.ResolvedEntity) (wire.Group, error) {
 }
 
 // effectiveChannels resolves a config membership list to the effective
-// one (§4): nil (omitted) defaults; explicit empty stays empty.
+// one (§4): an omitted OR empty list defaults. This is the gate — the
+// only place config becomes membership state — and it guarantees every
+// admitted entity holds at least one channel, so no consumer has to
+// reason about an empty membership set or re-apply the default itself.
 func effectiveChannels(list []string) []string {
-	if list == nil {
+	if len(list) == 0 {
 		return DefaultChannels()
 	}
 	return list

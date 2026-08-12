@@ -81,7 +81,8 @@ func TestAdmissionGroupSigned(t *testing.T) {
 
 // TestAdmissionGroupMaterializesConfig: the config-derived consumer
 // vocabulary lands in the admission group — effective memberships
-// (explicit empty writes nothing), set render fields, priority, dof.
+// (an empty list defaults, like an omitted one), set render fields,
+// priority, dof.
 func TestAdmissionGroupMaterializesConfig(t *testing.T) {
 	gain, size, dof := 2.5, 0.4, 3
 	g, err := AdmissionGroup(&connect.ResolvedEntity{
@@ -90,7 +91,7 @@ func TestAdmissionGroupMaterializesConfig(t *testing.T) {
 			Name:     "Desk",
 			Priority: true,
 			HeardIn:  []string{"stage", "aux"},
-			Hears:    []string{}, // deliberately none — must write no keys
+			Hears:    []string{}, // empty is not "none" — it defaults
 			Render:   &connect.Render{Gain: &gain, Size: &size},
 			Dof:      &dof,
 		},
@@ -104,6 +105,7 @@ func TestAdmissionGroupMaterializesConfig(t *testing.T) {
 		"lasa.entity.e1.name":           `"Desk"`,
 		"lasa.entity.e1.heard-in.stage": "true",
 		"lasa.entity.e1.heard-in.aux":   "true",
+		"lasa.entity.e1.hears.main":     "true",
 		"lasa.entity.e1.priority":       "true",
 		"lasa.entity.e1.render.gain":    "2.5",
 		"lasa.entity.e1.render.size":    "0.4",

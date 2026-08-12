@@ -207,6 +207,38 @@ definitions. Any violation rejects the connection.
 observer/console pattern: such a connection may subscribe `presence`,
 its own state sink, and whatever sinks its grants allow.
 
+**Stream quality and redundancy declarations.** An entity definition
+MAY carry two declarations about its source stream. Both are fixed
+for the life of the connection and exist so the receiving side can
+provision buffering *before the first packet* rather than learn it
+from the first audible failure:
+
+- **`quality`** — integer 0–2, default 0: the stream's
+  latency-tolerance **intent**. 0 = interactive (minimal latency);
+  1 = resilient (moderate added latency for materially fewer
+  artifacts); 2 = playback/broadcast (latency is unimportant;
+  uninterrupted artifact-free delivery is). The level is intent, not
+  parameters: the space maps it onto its receive-side buffering
+  policy, and that mapping may be re-tuned without protocol change.
+- **`redundancy`** — integer 0–7, default 0: the **maximum**
+  redundancy offset (§5.1) the entity intends to use on this stream;
+  0 means it will not use redundancy. A redundant copy repairs a loss
+  only if the receiver's buffer already spans the offset, so the
+  space provisions buffer depth from this declaration. A sender MUST
+  NOT emit an offset exceeding its declaration; within it, redundancy
+  remains a per-packet choice (§5.1).
+
+The two compose (a redundancy-derived buffering floor and a
+quality-derived one combine as their maximum) but are independent
+inputs. The sink direction needs no counterpart declaration: a client
+owns its own playout buffering and applies its policy locally; if a
+space ever emits redundancy on sink tracks, the mirror declaration is
+profile vocabulary over state, not connection surface. Because these
+fields are part of the entity definition, ticket-defined entities
+carry them authorship-guaranteed; whether ad-hoc entities may claim
+elevated quality — which costs the space per-entity buffer memory —
+is deployment policy.
+
 ### 4.3 Tickets
 
 A Ticket is a signed JWT (`schemata/ticket.schema.json`). EdDSA
@@ -346,12 +378,17 @@ so a **u16 length prefix on the primary payload** separates the two.
 When the redundancy bit is clear there is no length prefix. The
 referenced packet MUST be audio-bearing. The format carries the
 capability only: whether redundancy is on is the sender's per-packet
-choice, and any adaptation policy is profile vocabulary over state,
-not format surface.
+choice, bounded by the entity's declared maximum offset (§4.2), and
+any adaptation policy within that bound is profile vocabulary over
+state, not format surface.
 
 > *Note: the offset converts loss into latency at `offset × 5 ms` and
-> must be tuned jointly with jitter-buffer depth — an offset larger
-> than the buffer depth is unusable.*
+> is only usable if the receiver's jitter buffer spans it — which is
+> why the intended maximum is declared up front (§4.2): the receiver
+> provisions buffer depth from the declaration instead of discovering
+> the need at the first unrepaired loss. An offset beyond the declared
+> maximum is a sender violation; the packet's primary payload remains
+> valid, but the redundant copy cannot be assumed usable.*
 
 **Timestamps.** Uplink: none, deliberately — the server re-times
 everything at the mix, and a source timestamp would wrongly suggest

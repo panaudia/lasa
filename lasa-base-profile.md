@@ -142,8 +142,11 @@ Sources and sinks are joined by named channels: **source S is audible
 to sink K iff they share at least one channel that is not muted.**
 An entity's memberships are directional: `heard-in` lists the channels
 in which its source is heard, `hears` the channels its sink listens
-to. An entity whose config omits `heard-in` (resp. `hears`) gets
-**`["main"]`**; an explicit empty array means deliberately none.
+to. An entity whose config omits `heard-in` (resp. `hears`) — or supplies
+an empty array — gets **`["main"]`**. Membership is resolved once, at
+admission, and every admitted entity holds at least one channel: a
+config cannot declare an entity into silence, because a source that
+emits signal is audible somewhere.
 
 Channels carry optional render overrides, resolved per (source, sink)
 pair. Muted channels contribute nothing to resolution. Across the
@@ -251,10 +254,12 @@ ticket — different authorship guarantee, immutable. Flattening per
 **`heard-in.{channel}` / `hears.{channel}`** — the channels in which
 this entity is heard / hears. Defaults per §4, applied at admission:
 the server materializes the **effective** membership into these keys —
-an omitted config list is written as `main`, an explicit empty list
-writes no keys — so under a live existence marker the present key set
-IS the membership, and state carries no defaulting rule of its own
-("deliberately none" is representable).
+an omitted or empty config list is written as `main` — so under a live
+existence marker the present key set IS the membership, and state
+carries no defaulting rule of its own. A consumer reads these keys
+literally and never re-applies the default. Admission always writes at
+least one; a set emptied afterwards by a `producer` clearing its last
+key is a runtime moderation act, and leaves that entity inaudible.
 
 **`priority`** — marks this entity's source as important: rendering
 should make every effort to preserve its accuracy and quality. Do not

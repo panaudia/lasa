@@ -35,6 +35,8 @@ type Entity struct {
 	Attrs       map[string]any `json:"attrs,omitempty"`
 	Frame       string         `json:"frame,omitempty"`
 	Dof         *int           `json:"dof,omitempty"`
+	Quality     int            `json:"quality,omitempty"`
+	Redundancy  int            `json:"redundancy,omitempty"`
 	InitialPose *PoseSpec      `json:"initial-pose,omitempty"`
 	Render      *Render        `json:"render,omitempty"`
 }
