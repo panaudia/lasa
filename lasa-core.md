@@ -207,37 +207,46 @@ definitions. Any violation rejects the connection.
 observer/console pattern: such a connection may subscribe `presence`,
 its own state sink, and whatever sinks its grants allow.
 
-**Stream quality and redundancy declarations.** An entity definition
-MAY carry two declarations about its source stream. Both are fixed
-for the life of the connection and exist so the receiving side can
-provision buffering *before the first packet* rather than learn it
-from the first audible failure:
+**Quality and redundancy declarations.** An entity definition MAY
+carry two declarations about its **audio path** — the stream it
+publishes *and* the sink track rendered for it. Each direction has a
+jitter buffer at its receiving end; one declaration configures both.
+Both fields are fixed for the life of the connection and exist so
+each receiving side can provision buffering *before the first packet*
+rather than learn it from the first audible failure:
 
-- **`quality`** — integer 0–2, default 0: the stream's
+- **`quality`** — integer 0–2, default 0: the path's
   latency-tolerance **intent**. 0 = interactive (minimal latency);
   1 = resilient (moderate added latency for materially fewer
   artifacts); 2 = playback/broadcast (latency is unimportant;
   uninterrupted artifact-free delivery is). The level is intent, not
-  parameters: the space maps it onto its receive-side buffering
-  policy, and that mapping may be re-tuned without protocol change.
+  parameters: each receiver maps it onto its own buffering policy,
+  and that mapping may be re-tuned without protocol change. The space
+  applies it to its ingest buffer; the client applies its own
+  declaration to its playout buffer. The sink half never touches the
+  wire — the client authored the declaration and is the sink's
+  receiver — so a client MAY depart from it locally, and an entity
+  whose two directions genuinely differ needs no protocol support.
 - **`redundancy`** — integer 0–7, default 0: the **maximum**
-  redundancy offset (§5.1) the entity intends to use on this stream;
-  0 means it will not use redundancy. A redundant copy repairs a loss
-  only if the receiver's buffer already spans the offset, so the
-  space provisions buffer depth from this declaration. A sender MUST
-  NOT emit an offset exceeding its declaration; within it, redundancy
-  remains a per-packet choice (§5.1).
+  redundancy offset (§5.1) on this path; 0 means none. It bounds the
+  sender in both directions: the entity's uplink emission, and the
+  space's emission on that entity's sink track — for the sink
+  direction the declaration doubles as the client's *request*, which
+  the space SHOULD honour within deployment policy. A redundant copy
+  repairs a loss only if the receiver's buffer already spans the
+  offset, so each receiving side provisions buffer depth from the
+  declaration: the space for its ingest buffer, the client for its
+  playout buffer. A sender MUST NOT emit an offset exceeding the
+  declaration; within it, redundancy remains a per-packet choice
+  (§5.1).
 
 The two compose (a redundancy-derived buffering floor and a
 quality-derived one combine as their maximum) but are independent
-inputs. The sink direction needs no counterpart declaration: a client
-owns its own playout buffering and applies its policy locally; if a
-space ever emits redundancy on sink tracks, the mirror declaration is
-profile vocabulary over state, not connection surface. Because these
-fields are part of the entity definition, ticket-defined entities
-carry them authorship-guaranteed; whether ad-hoc entities may claim
-elevated quality — which costs the space per-entity buffer memory —
-is deployment policy.
+inputs. Because these fields are part of the entity definition,
+ticket-defined entities carry them authorship-guaranteed; whether
+ad-hoc entities may claim elevated quality or sink redundancy — which
+cost the space per-entity buffer memory and egress bandwidth
+respectively — is deployment policy.
 
 ### 4.3 Tickets
 
@@ -380,7 +389,9 @@ referenced packet MUST be audio-bearing. The format carries the
 capability only: whether redundancy is on is the sender's per-packet
 choice, bounded by the entity's declared maximum offset (§4.2), and
 any adaptation policy within that bound is profile vocabulary over
-state, not format surface.
+state, not format surface. On sink tracks the space is the sender:
+the entity's declaration is both the request for sink redundancy and
+the bound on it (§4.2).
 
 > *Note: the offset converts loss into latency at `offset × 5 ms` and
 > is only usable if the receiver's jitter buffer spans it — which is

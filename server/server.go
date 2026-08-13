@@ -58,6 +58,15 @@ type Config struct {
 	// (base profile: admin and producer). nil means never.
 	AmbiFormats func(roles []string) bool
 
+	// SinkRedundancy decides whether an entity's declared sink
+	// redundancy (lasa-core.md §4.2: the client's request that the
+	// space emit repeats on its sink track, which the space SHOULD
+	// honour within deployment policy) is honoured — the §4.2 policy
+	// hook for e.g. ad-hoc entities claiming egress bandwidth.
+	// Refusing = simply not emitting; the declaration is a request,
+	// not a MUST. nil honours every declaration.
+	SinkRedundancy func(e *connect.ResolvedEntity) bool
+
 	// RulesFor computes a connection's merged state-access rules — the
 	// union of its roles' expanded rules and its ticket permissions.
 	// Required.

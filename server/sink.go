@@ -17,6 +17,13 @@ type sinkManager struct {
 	sampleEpoch func(sampleTS uint64) uint64
 	mu          sync.Mutex
 	renders     map[sinkKey]*render
+	// decl is the effective sink-redundancy offset per live entity
+	// (declared by the entity, filtered through Config.SinkRedundancy
+	// at admission; absent = no emission). Read at render start —
+	// emission policy is static per session (lasa-core.md §4.2;
+	// plan/sink-redundancy.md v1).
+	declMu sync.Mutex
+	decl   map[string]uint8
 }
 
 type sinkKey struct{ entity, format string }
@@ -33,7 +40,30 @@ type pubEntry struct {
 }
 
 func newSinkManager(b Backend, sampleEpoch func(uint64) uint64) *sinkManager {
-	return &sinkManager{backend: b, sampleEpoch: sampleEpoch, renders: map[sinkKey]*render{}}
+	return &sinkManager{
+		backend: b, sampleEpoch: sampleEpoch,
+		renders: map[sinkKey]*render{}, decl: map[string]uint8{},
+	}
+}
+
+// setDecl / clearDecl bracket an entity's live effective sink-redundancy
+// offset (entity join / departure).
+func (m *sinkManager) setDecl(entityID string, offset uint8) {
+	m.declMu.Lock()
+	m.decl[entityID] = offset
+	m.declMu.Unlock()
+}
+
+func (m *sinkManager) clearDecl(entityID string) {
+	m.declMu.Lock()
+	delete(m.decl, entityID)
+	m.declMu.Unlock()
+}
+
+func (m *sinkManager) declOf(entityID string) uint8 {
+	m.declMu.Lock()
+	defer m.declMu.Unlock()
+	return m.decl[entityID]
 }
 
 // ensure returns the (entity, format) render, starting it if absent.
@@ -44,7 +74,7 @@ func (m *sinkManager) ensure(entityID, format string) (*render, error) {
 	if r, ok := m.renders[key]; ok {
 		return r, nil
 	}
-	r := &render{key: key, writer: &sinkWriter{sampleEpoch: m.sampleEpoch}}
+	r := &render{key: key, writer: &sinkWriter{sampleEpoch: m.sampleEpoch, red: m.declOf(entityID)}}
 	r.writer.mgr, r.writer.r = m, r
 	session, err := m.backend.StartSink(entityID, format, r.writer)
 	if err != nil {
@@ -160,6 +190,14 @@ type sinkWriter struct {
 	scratch    []byte
 	lastAnchor uint64
 	sentFirst  bool
+	// Sink-track repeat emitter (lasa-core.md §5.1; the entity's §4.2
+	// declaration is the request AND the bound). red is the effective
+	// offset (0 = off, static per session); history holds the previous
+	// frames' payloads — 8 slots so slot (seq−7)%8 is never the slot
+	// being written at seq. Slices are reused across laps (amortized
+	// zero allocation, same as scratch).
+	red     uint8
+	history [8][]byte
 	// sampleEpoch maps the embedder's sample clock to unix-epoch µs for
 	// the informational anchors — the shell's only contact with epoch
 	// time (design §1: one clock; the value derives from the render
@@ -175,12 +213,28 @@ type sinkWriter struct {
 const tsCadenceSamples = 48_000
 
 func (w *sinkWriter) WriteFrame(frame []byte, sampleTS uint64) error {
+	seq := w.seq
+	w.seq++ // sink tracks are continuous: ids advance regardless
+	if w.red > 0 {
+		// The history ring advances with the id space even while no
+		// subscriber is attached, so a mid-render join sees correctly
+		// referenced repeats immediately.
+		slot := seq % uint64(len(w.history))
+		w.history[slot] = append(w.history[slot][:0], frame...)
+	}
 	pubs := w.pubs.Load()
 	if pubs == nil || len(*pubs) == 0 {
-		w.seq++ // sink tracks are continuous: ids advance regardless
 		return nil
 	}
 	pkt := wire.SinkPacket{Audio: frame}
+	if w.red > 0 && seq >= uint64(w.red) {
+		// The referenced packet is always audio-bearing (§5.1 MUST):
+		// sink tracks are continuous at the frame cadence.
+		dup := w.history[(seq-uint64(w.red))%uint64(len(w.history))]
+		if len(dup) > 0 {
+			pkt.Redundancy = &wire.Redundancy{Offset: w.red, Audio: dup}
+		}
+	}
 	if w.sampleEpoch != nil && (!w.sentFirst || sampleTS-w.lastAnchor >= tsCadenceSamples) {
 		ts := w.sampleEpoch(sampleTS)
 		pkt.Timestamp = &ts
@@ -194,7 +248,7 @@ func (w *sinkWriter) WriteFrame(frame []byte, sampleTS uint64) error {
 	w.failed = w.failed[:0]
 	for _, pe := range *pubs {
 		if e := pe.pub.SendDatagram(moqtransport.Object{
-			GroupID:              w.seq,
+			GroupID:              seq,
 			ObjectID:             0,
 			ForwardingPreference: moqtransport.ObjectForwardingPreferenceDatagram,
 			Payload:              w.scratch,
@@ -202,7 +256,6 @@ func (w *sinkWriter) WriteFrame(frame []byte, sampleTS uint64) error {
 			w.failed = append(w.failed, pe.pub)
 		}
 	}
-	w.seq++
 	for _, f := range w.failed {
 		w.mgr.drop(w.r, f)
 	}

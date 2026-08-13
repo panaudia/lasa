@@ -148,6 +148,13 @@ func (cs *connSession) start() error {
 		if err != nil {
 			return fmt.Errorf("EntityJoined(%s): %w", e.ID, err)
 		}
+		// The entity's declared sink redundancy (§4.2: the client's
+		// request that the space emit repeats on its sink track),
+		// filtered through deployment policy. Static for the session;
+		// the entity's renders read it at start.
+		if e.Redundancy > 0 && (cs.srv.cfg.SinkRedundancy == nil || cs.srv.cfg.SinkRedundancy(e)) {
+			cs.srv.sinks.setDecl(e.ID, uint8(e.Redundancy))
+		}
 		cs.mu.Lock()
 		cs.entityByID[e.ID] = h
 		cs.mu.Unlock()
@@ -408,6 +415,7 @@ func (cs *connSession) teardown() {
 			cs.srv.collector.Remove(e.ID)
 			// After EntityLeft (see dropEntity): end the departed
 			// entity's sink tracks.
+			cs.srv.sinks.clearDecl(e.ID)
 			cs.srv.sinks.dropEntity(e.ID)
 		}
 	}

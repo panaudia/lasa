@@ -56,6 +56,14 @@ client- or deployment-owned (outside our baselines).
   is client-side packetization — a 20 ms sender holds samples an
   average of 10 ms before sending — which is a [C] stage above and
   the real-world win of the 5 ms wire framing.
+  *(v4 supersedes this geometry, 2026-08-12: the adaptive band is
+  gone — the buffer servos fill onto a setpoint of
+  `max(R+S, R+W, declared floor) + k·measured late width`, clean-feed
+  standing fill ≈ 5 ms post-read, and drift is reconciled at the
+  physical splice minimum instead of parking fill at a drop line.
+  Floors are declared per entity via the LASA `quality`/`redundancy`
+  fields. See engine `plan/jitter-v4-design.md`; the v3 numbers in
+  the rows below are history.)*
 - **Two pose pipelines, two different latencies — by design**
   (`panaudia-server-design.md` §1, engine pose harness):
   - *sink pose* (your own head turn) takes the latest-wins fast
@@ -145,6 +153,7 @@ Paul; ±5 ms honesty bars.
 | 2026-08-06 | panaudia-bridge | built-in mic + speakers | **~110 ms** |
 | 2026-08-07 | Chrome | Scarlett 4i4 (USB) | **~75 ms** |
 | 2026-08-07 | panaudia-bridge | Scarlett 4i4 (USB) | **~65 ms** |
+| 2026-08-12 | panaudia-bridge | Scarlett 4i4 (USB), **v4 jitter buffers** | **~50 ms** |
 
 **The device floor, measured** (`panaudia-bridge/cmd/audioprobe` —
 read-only CoreAudio properties per side: io buffer + device latency +
@@ -205,6 +214,30 @@ are device-floor-bound and the browser is entirely adequate. The
 native client's structural advantages (clean pacing → shallow server
 band, no GC-stall class) matter beyond this single-machine number —
 see `spike-native-audio/README.md` and the feasibility doc §4.
+
+**2026-08-12 — the v4 jitter buffer lands both levers.** Same rig as
+the 08-07 Scarlett rows (bridge `-echo`, clap test, ±5 ms), rebuilt on
+the v4 production swap (engine `plan/jitter-v4-design.md`; both
+positions — server ingest and bridge playout — now run the v4 core at
+quality level 0): **~50 ms mouth-to-ear**, from 65. The stage table
+below had named its two levers, and this row collects both:
+
+- **Stage 5, the drift equilibrium, is gone** (~18 → ~8 ms): the v4
+  servo holds fill at the measured-width setpoint and reconciles the
+  ~21 ppm Scarlett drift with a feed-forward splice trickle at the
+  physical minimum — fill no longer parks at a drop line (there is no
+  drop line). This is the "drift-aware re-centre" column of the
+  rotation table, now simply the shipped behaviour.
+- **Stage 4's ingest fill drops** (~11 → ~5–6 ms): v4's clean-feed
+  standing latency (calm dut 5.0 ms in the jitterlab baseline) versus
+  v3's 11 ms warm-start band.
+
+The 08-07 prediction ("a drift-free pairing... would read ~55 ms")
+plus the ingest reduction ≈ 50 ✓ — accounted, nothing unexplained.
+Rotation → ear correspondingly takes the table's right-hand column
+(~31 ms on this rig, from ~41). Headline supersede: **server-side
+spatial rendering at ~50 ms mouth-to-ear through a USB interface**,
+native client, loopback network.
 
 ### Stage table (2026-08-07) — the whole loop, measured
 
