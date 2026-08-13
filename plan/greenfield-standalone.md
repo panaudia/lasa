@@ -361,7 +361,10 @@ goroutine observes transport death; removal is idempotent and
 generation-guarded against id reuse (evict-old admission recreates
 the reuse hazard); encoder cgo free only on the mixer goroutine after
 rendering stops; eviction waits for the predecessor's teardown before
-the successor's admission writes (the SPI's Admit-may-block contract).
+the successor's admission writes (the SPI's Admit-may-block contract
+— superseded 2026-08-13 by `id-capabilities.md`: supersession moves
+to the shell/engine claim point and Admit stops blocking; the
+teardown-before-successor-writes ordering itself stands).
 
 **Transport reach — an honest gap:** `lasa/server` today serves raw
 QUIC only (`quicmoq`). Browsers cannot open raw QUIC, so either

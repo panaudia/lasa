@@ -51,10 +51,13 @@ Write, when `{entity-id}` is one of the connection's own entities:
 - `lasa.entity.{entity-id}.mute.{other-entity-id}` — set, clear
 - `lasa.entity.{entity-id}.solo.{other-entity-id}` — set, clear
 
-Read: `lasa.entity.` and `lasa.space.` — everything in the
-vocabulary. (Nothing here is secret; names and attrs exist to be
-shown to other participants, and a muted user should be able to see
-that they are muted.)
+Read: `lasa.entity.` and `lasa.space.` — the participant-facing
+vocabulary. `lasa.client.` is deliberately excluded: the claim
+records (§6) are server-consumed, and clients learn of participants
+through entity keys and presence. (Nothing here is secret — client
+ids included, core §8: the entity marker's value names its owner;
+names and attrs exist to be shown to other participants, and a muted
+user should be able to see that they are muted.)
 
 ### presenter
 
@@ -122,10 +125,13 @@ with ordinary `clear` ops — seq-assigned, grouped, compacted,
 tombstoned like any other write; nothing on the wire marks a sweep.
 The server SHOULD clear the entity existence marker first, or in the
 same group as the rest of the sweep — the ignore-when-absent rule
-then covers readers mid-sweep. Sweep timing (immediate vs a grace
-period) is server behaviour; on eviction the core's ordering rule
-applies (sweep completes or is cancelled before the replacement
-connection's admission writes).
+then covers readers mid-sweep. **Sweeps run at disconnect,
+immediately; there is no grace period.** The claim records — the
+client key and the entity existence markers (§6) — are the authority
+for exercised ids (core §4.4), so their presence must equal
+connectedness. On supersession (core §4.4) the core's ordering rule
+applies (the superseded connection's sweep completes or is cancelled
+before the replacement connection's admission writes).
 
 Space-scoped keys survive reconnects — which is what makes
 moderation launder-proof: personal mutes reset with the connection,
@@ -205,7 +211,8 @@ recovery from any block state: an admin can always connect and clear.
 
 | Key | Values | Written by |
 |---|---|---|
-| `lasa.entity.{id}` | `true` | server only |
+| `lasa.client.{id}` | `true` | server only |
+| `lasa.entity.{id}` | String: owning client id | server only |
 | `lasa.entity.{id}.name` | String | server, from config; immutable |
 | `lasa.entity.{id}.attrs.{attr}` | any §1 type | config; owner at runtime |
 | `lasa.entity.{id}.signed-attrs.{attr}` | any §1 type | server, from ticket; immutable |
@@ -236,10 +243,23 @@ recovery from any block state: an admin can always connect and clear.
 
 ### Semantics
 
-**`lasa.entity.{id}`** — the existence marker. Set and cleared by the
-server only, in response to connection and departure. All other keys
-under the entity's prefix MUST be ignored while this is absent
-(which is what makes the departure sweep safe mid-flight, §3).
+**`lasa.client.{id}`** — the client claim record: present iff a
+connection is currently exercising this client id (core §4.4). Set by
+the server at admission, before any entity group; swept immediately
+at disconnect (§3). The value is `true`, deliberately minimal —
+consumers MUST NOT depend on it beyond presence, so it can be
+extended later. Not in any role's read scope (§2): server-side
+consumers (entry points, the moderation gate) read it through
+observers; clients never receive it.
+
+**`lasa.entity.{id}`** — the existence marker and entity claim
+record. Set and cleared by the server only, in response to connection
+and departure. Its value is the **owning client id** — the client
+whose connection instantiated the entity — making ownership readable
+wherever the entity is (a deliberate visibility choice, core §8;
+consumers needing only existence treat the value as opaque). All
+other keys under the entity's prefix MUST be ignored while this is
+absent (which is what makes the departure sweep safe mid-flight, §3).
 
 **`name`** — non-unique human-readable label, from the config or
 ticket definition.

@@ -94,8 +94,16 @@ multiple shared channels, highest gain wins and lowest attenuation
 wins (as the key docs already said). **Default channel:** an entity
 whose config omits `sources` (resp. `sinks`) gets `["main"]`; an
 explicit empty array means deliberately none. Bare configs just work.
+*(Superseded detail: the spec as written — base profile §4, and the
+implementation — defaults an explicit empty list to `["main"]` too;
+"empty means none" did not survive into the normative text.)*
 
 ## 9. Mixed-mode entity collision: signed beats unsigned
+
+*Deleted 2026-08-13 (`id-capabilities.md`): mixed mode no longer
+exists — an unticketed space now rejects any presented ticket (mode
+mismatch, `0x1A5A08`), so this collision can never occur and the rule
+below is void.*
 
 Spaces are expected to run ticketed or unticketed, but an unticketed
 space still verifies tickets that are presented, so the mix can

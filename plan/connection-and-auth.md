@@ -1,5 +1,13 @@
 # Connection and auth
 
+*2026-08-13: the admission-collision and space-mode rules in this doc
+are superseded by **`id-capabilities.md`** (ids as capabilities:
+title/exercise, newest-exercise-wins on same-capability contests in
+both modes, strict ticketed-XOR-unticketed with tickets rejected in
+open spaces, claims ledger at the state engine). The affected
+sections are annotated in place; everything else here stands, and the
+superseded reasoning is retained as history.*
+
 When connecting a client must present a Connection Config, which contains configuration and authentication information.
 
 A Space inself may be pre-configured to allow unauthorised connections or it may reqire the Connection Config to include a signed Ticket
@@ -75,6 +83,12 @@ delta-encodes parameter keys ascending, so custom keys append in key
 order.
 
 ## Decided 2026-07-27: unticketed spaces
+
+*Superseded 2026-08-13 (`id-capabilities.md`): unticketed is formally
+a dev mode with a declared-empty threat model; collisions now resolve
+newest-wins (the reject-newcomer rule below and its id-hijack
+rationale are reversed), and a config presenting a ticket to an
+unticketed space is rejected — no mixed mode.*
 
 A Space may be configured to accept unticketed connections. This is a
 deliberate, uncommon operating mode — dev, demos, closed networks —
@@ -222,6 +236,13 @@ independent tracks, and subscription is the only lifecycle signal.**
 
 ## Decided 2026-07-27: reconnect lifecycle
 
+*Amended 2026-08-13 (`id-capabilities.md`): rule 2's outcomes stand —
+same-client evict is now "newest exercise wins" and cross-client
+entity collision still rejects — but they are derived from the
+title/exercise framing rather than argued case-by-case, and the
+mixed-mode signed-beats-unsigned rule is deleted with mixed mode
+itself.*
+
 **1. "Reconnect" is not a protocol concept.** Every connection is a
 fresh connection presenting a full Connection Config; there is no
 resume token, no connection-id continuity, no half-alive state.
@@ -333,6 +354,7 @@ grammar `[a-z0-9-]{1,128}` incl. space ids (aud MUST equal the space
 id); admin unblockable; ticket `permissions` claim (set/clear/read
 prefixes, union with roles; app-space deny-by-default when ticketed,
 unrestricted when unticketed); evict-sweep ordering; signed-beats-
-unsigned on mixed-mode entity collision; zero-entity connections
+unsigned on mixed-mode entity collision (deleted 2026-08-13 with
+mixed mode itself — `id-capabilities.md`); zero-entity connections
 legal; ticket with no roles ⇒ audience.*
 

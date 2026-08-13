@@ -15,14 +15,20 @@ const (
 // WebTransport bound) and sit in a LASA range distinct from MoQ's own
 // session-terminate codes.
 const (
-	ErrCodeMalformedConfig   uint32 = 0x1A5A00 // malformed / schema-invalid Connection Config
-	ErrCodeInvalidTicket     uint32 = 0x1A5A01 // signature, expired, not yet valid, wrong audience
-	ErrCodeClientIDMismatch  uint32 = 0x1A5A02 // client_id does not match the ticket claim
-	ErrCodeIDCollision       uint32 = 0x1A5A03 // unticketed live client or entity id
-	ErrCodeEntityCollision   uint32 = 0x1A5A04 // entity id collides with another client's live entity
+	ErrCodeMalformedConfig  uint32 = 0x1A5A00 // malformed / schema-invalid Connection Config
+	ErrCodeInvalidTicket    uint32 = 0x1A5A01 // signature, expired, not yet valid, wrong audience
+	ErrCodeClientIDMismatch uint32 = 0x1A5A02 // client_id does not match the ticket claim
+
+	// ErrCodeIDCollision is RETIRED (2026-08-13, lasa-core.md §4.6):
+	// unticketed collisions now supersede instead of rejecting. The code
+	// point must never be reused.
+	ErrCodeIDCollision uint32 = 0x1A5A03
+
+	ErrCodeEntityCollision   uint32 = 0x1A5A04 // entity id collides with another client's live entity (ticketed)
 	ErrCodeAdHocNotPermitted uint32 = 0x1A5A05 // ad-hoc entities not permitted for this ticket
 	ErrCodeBlocked           uint32 = 0x1A5A06 // blocked
 	ErrCodeAtCapacity        uint32 = 0x1A5A07 // space at capacity
+	ErrCodeModeMismatch      uint32 = 0x1A5A08 // ticket presented to an unticketed space
 )
 
 const (

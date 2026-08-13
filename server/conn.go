@@ -7,6 +7,7 @@ import (
 	"io"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"github.com/panaudia/moqtransport"
 
@@ -35,6 +36,13 @@ type connSession struct {
 	resolved *connect.Resolved
 	binding  *ident.Binding
 	econn    *state.Conn
+	// superseded: client ids whose connections the engine's Admit
+	// closed for this admission; start() severs their transports and
+	// waits for their teardown before EntityJoined.
+	superseded []string
+	// torndown closes when teardown completes — what a successor's
+	// supersession wait blocks on.
+	torndown chan struct{}
 
 	// transport is the connection's transport kind ("quic" |
 	// "webtransport"), set by ServeConn before the session runs and
@@ -59,6 +67,7 @@ func newConnSession(s *Server) *connSession {
 		ctx:        ctx,
 		cancel:     cancel,
 		entityByID: map[string]EntityHandler{},
+		torndown:   make(chan struct{}),
 	}
 }
 
@@ -93,17 +102,45 @@ func (cs *connSession) onClientSetup(params moqtransport.KVPList) error {
 		return setupRejection(rej)
 	}
 	res.Transport = cs.transport
-	// Moderation gate BEFORE Admit (design §7, the KickGate lesson): a
-	// blocked id's reconnect can never reach eviction logic.
+	// Moderation gate BEFORE adjudication (design §7, the KickGate
+	// lesson): a blocked id's reconnect can never reach supersession.
 	if rej := cs.srv.gate.check(res); rej != nil {
 		return setupRejection(rej)
 	}
-	if rej := cs.srv.cfg.Backend.Admit(res); rej != nil {
-		return setupRejection(rej)
+	// Profile admission writes (claim group first — batch A), then one
+	// atomic adjudicate-and-apply at the engine (batch B): the single
+	// admission decision point (id-capabilities.md). Supersession of
+	// the returned client ids' transports happens in start().
+	groups := []wire.StateMessage{base.ClientClaimGroup(res.ClientID)}
+	entityKeys := make([]string, len(res.Entities))
+	for i := range res.Entities {
+		e := &res.Entities[i]
+		entityKeys[i] = base.EntityMarkerKey(e.ID)
+		g, err := base.AdmissionGroup(res.ClientID, e)
+		if err != nil {
+			return moqtransport.SetupRejection{Code: uint64(wire.ErrCodeMalformedConfig), Reason: fmt.Sprintf("admission ops for %s: %v", e.ID, err)}
+		}
+		groups = append(groups, g)
 	}
-	econn, err := cs.srv.engine.Register(res.ClientID, cs.srv.cfg.RulesFor(res))
+	econn, superseded, err := cs.srv.engine.Admit(state.AdmitRequest{
+		ClientID:   res.ClientID,
+		Rules:      cs.srv.cfg.RulesFor(res),
+		Ticketed:   ticket != nil,
+		Capacity:   cs.srv.cfg.Capacity,
+		ClaimKey:   base.ClientKey(res.ClientID),
+		EntityKeys: entityKeys,
+		Groups:     groups,
+	})
 	if err != nil {
-		return moqtransport.SetupRejection{Code: uint64(wire.ErrCodeMalformedConfig), Reason: "engine unavailable"}
+		var owned *state.EntityOwnedError
+		switch {
+		case errors.As(err, &owned):
+			return moqtransport.SetupRejection{Code: uint64(wire.ErrCodeEntityCollision), Reason: owned.Error()}
+		case errors.Is(err, state.ErrAtCapacity):
+			return moqtransport.SetupRejection{Code: uint64(wire.ErrCodeAtCapacity), Reason: "space at capacity"}
+		default:
+			return moqtransport.SetupRejection{Code: uint64(wire.ErrCodeMalformedConfig), Reason: "engine unavailable"}
+		}
 	}
 	entities := make([]string, len(res.Entities))
 	for i, e := range res.Entities {
@@ -111,6 +148,7 @@ func (cs *connSession) onClientSetup(params moqtransport.KVPList) error {
 	}
 	cs.resolved = res
 	cs.econn = econn
+	cs.superseded = superseded
 	cs.binding = &ident.Binding{
 		Space:       cs.srv.cfg.SpaceID,
 		Client:      res.ClientID,
@@ -125,25 +163,52 @@ func setupRejection(r *connect.Rejection) error {
 	return moqtransport.SetupRejection{Code: uint64(r.Code), Reason: r.Reason}
 }
 
-// abortAdmission cleans up when the handshake fails after admission.
+// abortAdmission cleans up when the handshake fails after admission:
+// bare Close sweeps the claim set Admit recorded and applied, so an
+// aborted handshake leaves no claim keys behind.
 func (cs *connSession) abortAdmission() {
 	if cs.econn != nil {
 		_ = cs.econn.Close()
 	}
 }
 
-// start runs post-handshake admission actions: base-profile writes,
-// EntityJoined, and the subscriptions to the client's source tracks.
+// start runs post-handshake admission actions: live registration,
+// supersession of displaced predecessors, EntityJoined, and the
+// subscriptions to the client's source tracks. The admission writes
+// already landed — atomically, inside Engine.Admit.
 func (cs *connSession) start() error {
+	// Register in the live index FIRST (also the moderation gate's
+	// sever surface, §7), then close the mid-handshake supersession
+	// window: a successor that adjudicated while this session sat
+	// between Admit and registration finds a closed generation here —
+	// never a half-started ghost invisible to severSuperseded.
+	cs.srv.registerLive(cs)
+	select {
+	case <-cs.econn.Done():
+		cs.cancel(errEvicted)
+		return errEvicted
+	case <-cs.ctx.Done():
+		return context.Cause(cs.ctx)
+	default:
+	}
+	// Sever the sessions this admission superseded and wait for their
+	// teardown: state ordering was atomic at the actor, but the mixer
+	// is not — the predecessor's EntityLeft must complete before this
+	// connection's EntityJoined (identity-implementation.md batch C).
+	if hit := cs.srv.severSuperseded(cs, cs.superseded); len(hit) > 0 {
+		deadline := time.After(cs.srv.cfg.SetupTimeout)
+		for _, old := range hit {
+			select {
+			case <-old.torndown:
+			case <-cs.ctx.Done():
+				return context.Cause(cs.ctx)
+			case <-deadline:
+				return errors.New("server: superseded predecessor teardown timed out")
+			}
+		}
+	}
 	for i := range cs.resolved.Entities {
 		e := &cs.resolved.Entities[i]
-		g, err := base.AdmissionGroup(e)
-		if err != nil {
-			return fmt.Errorf("admission ops for %s: %w", e.ID, err)
-		}
-		if err := cs.srv.engine.Write(g); err != nil {
-			return err
-		}
 		h, err := cs.srv.cfg.Backend.EntityJoined(cs.resolved.ClientID, *e)
 		if err != nil {
 			return fmt.Errorf("EntityJoined(%s): %w", e.ID, err)
@@ -161,7 +226,6 @@ func (cs *connSession) start() error {
 		go cs.subscribeEntitySource(e.ID)
 	}
 	go cs.subscribeStateSource()
-	cs.srv.registerLive(cs) // the moderation gate's sever surface (§7)
 	return nil
 }
 
@@ -404,11 +468,11 @@ func (cs *connSession) teardown() {
 	cs.srv.unregisterLive(cs)
 	cs.cancel(errSessionEnded)
 	if cs.resolved != nil {
-		scopes := make([]string, len(cs.resolved.Entities))
-		for i, e := range cs.resolved.Entities {
-			scopes[i] = base.SweepScope(e.ID)
-		}
-		_ = cs.econn.Close(scopes...) // generation close + marker-first sweep (L1)
+		// Bare Close sweeps the claim set Admit recorded (claim key +
+		// entity markers) — generation close + marker-first sweep
+		// (L1); claim keys release at disconnect, immediately
+		// (profile §3). A no-op if supersession already closed it.
+		_ = cs.econn.Close()
 		for _, e := range cs.resolved.Entities {
 			cs.srv.cfg.Backend.EntityLeft(cs.resolved.ClientID, e.ID)
 			// Roster hygiene the embedder cannot forget (design §6).
@@ -422,4 +486,8 @@ func (cs *connSession) teardown() {
 	cs.srv.sinks.dropConn(cs)
 	cs.srv.presence.RemoveSender(cs)
 	_ = cs.moq.Close()
+	// Last: release any successor waiting out this teardown (start's
+	// supersession wait) — everything above, EntityLeft included, has
+	// completed.
+	close(cs.torndown)
 }

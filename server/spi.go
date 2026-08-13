@@ -8,11 +8,11 @@ import (
 // Space = one space id = one engine. No method carries a space id: a
 // multi-space embedder instantiates one Backend per space.
 type Backend interface {
-	// Admit applies admission policy (collisions, capacity, blocking) to
-	// a parsed, verified, resolved connection. It MAY block until an
-	// evicted predecessor's teardown has reached the engine — the
-	// sweep-before-replacement-writes ordering is this contract.
-	Admit(res *connect.Resolved) *connect.Rejection
+	// Admission is not SPI surface (2026-08-13, id-capabilities.md):
+	// collisions, capacity and the admission writes adjudicate
+	// atomically at the state engine (state.Engine.Admit), and the
+	// supersession teardown wait is shell machinery. The embedder
+	// first hears of a connection at EntityJoined.
 
 	// EntityJoined is called once per admitted entity; the returned
 	// handler receives that entity's ingress for the life of the

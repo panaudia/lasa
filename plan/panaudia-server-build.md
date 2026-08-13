@@ -859,6 +859,16 @@ for any engine Layer-1 divergence; Paul's git.
       ported to the LASA SDK + page banner with recovery advice).
       Divergence recorded in SDK PROVENANCE.md; evidence retained
       in bluetooth-hfp-todo.md (now marked DONE).
+- [ ] identity changes (decided 2026-08-13, `id-capabilities.md` —
+      both same-day decisions; spec + profile text updated; full
+      sequenced plan: **`identity-implementation.md`**): claims as
+      state keys (`lasa.client.{id}` = true; entity marker value =
+      owning client id), adjudicated admission primitive on the
+      state actor (supersede same-client atomically, refuse ticketed
+      cross-owner + capacity — all refusals in one place), mode XOR
+      in `server.New` + `0x1A5A08`, `Backend.Admit` deleted from the
+      SPI, shell-side supersession teardown wait, grace period
+      removed from profile §3, test flips per plan.
 
 ## Deferred beyond this plan
 WebTransport;

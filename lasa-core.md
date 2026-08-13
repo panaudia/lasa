@@ -267,42 +267,74 @@ the config's `client_id`), optional `roles`, optional `permissions`
 them opaquely. The connection's effective state access is the union
 of its roles' rules and its ticket's permissions (§6.4).
 
-### 4.4 Unticketed spaces and admission
+### 4.4 Space mode, capabilities, and admission
 
-A Space MAY be configured to accept unticketed connections. This mode
-is deliberately fragile — identity is claim-based with no authorship
-guarantee — and is intended for development, demos and closed
-networks. An unticketed config carries `entities` directly (no
-`setups`, which require a ticket).
+A Space is **ticketed or unticketed, exclusively**, fixed at
+configuration. In a ticketed Space every connection MUST present a
+ticket. In an unticketed Space a config presenting a ticket MUST be
+rejected (`0x1A5A08`): a client presenting a ticket believes it is
+getting signed identity, and silently admitting it with claim-based
+identity would be a quiet degradation. There is no mixed mode.
 
-Admission collision rules:
+**Ids are capabilities**, and two facts about a capability are
+distinct. **Title** is the right to be a client id and to instantiate
+its entity ids: in a ticketed Space, title is granted by the signed
+ticket from `nbf` to `exp`, independent of any connection. Identity
+is the signed `client_id` claim, not the JWT — a renewed ticket
+bearing the same `client_id` is the same capability; entity
+capabilities are subordinate to the client capability that carries
+them. **Exercise** is a connection currently acting under a
+capability; at most one exercise per capability at a time. A
+zero-entity connection exercises its client capability like any
+other.
 
-- **Unticketed:** if the presented client id or any entity id is
-  currently connected, the connection MUST be rejected. First claim
-  wins; the claim lasts exactly as long as the connection. The new
-  connection fails; the live one is never evicted (without a
-  signature, evict-on-collision would be an id-hijack primitive).
-- **Ticketed, same client id live:** the old connection is
-  **evicted** wholesale — the ticket is the proof of principal that
-  unticketed mode lacks, and this serves the half-open-session
-  reconnect case. (Two devices sharing one ticket therefore do not
+Admission collision rules follow from one principle: **contests over
+the same capability resolve to the newest exercise; collisions
+between different capabilities refuse the newcomer.**
+
+- **Ticketed, same `client_id` live:** the newest exercise wins — the
+  old connection is **superseded**: severed wholesale and replaced.
+  The returning principal never waits on the server detecting the old
+  session's death. (Two devices sharing one ticket therefore do not
   get two sessions; the multi-device story is more tickets.)
 - **Ticketed, entity id collides with a different client's live
-  entity:** reject — unless the incumbent is unticketed, in which
-  case the incumbent is evicted (signed beats unsigned).
+  entity:** reject (`0x1A5A04`). Two distinct capabilities naming one
+  id is an issuer coordination error; neither outranks the other, and
+  a bystander is never severed on entity grounds.
+- **Unticketed:** any collision — client id or entity id — resolves
+  newest-wins: the incumbent connection is superseded wholesale.
+  Without title, reclaim and hijack are indistinguishable by
+  construction; the rule is chosen for the development restart loop,
+  and the mode's fragility is accepted (§8).
 
-Any state cleanup owed by an evicted connection MUST be completed or
-cancelled before the replacement connection's admission writes are
+Unticketed mode is a **development mode**: identity is
+possession-based with no authorship guarantee, intended for
+development, demos and closed networks. An unticketed config carries
+`entities` directly (no `setups`, which require a ticket).
+
+Any state cleanup owed by a superseded connection MUST be completed
+or cancelled before the replacement connection's admission writes are
 applied.
+
+The authority for exercised ids is the Space's state serialization
+point; the core defines no wire surface for the records. The base
+profile materializes them as state keys — `lasa.client.{id}` and the
+entity existence markers, whose values name their owning client
+(base profile §§3, 6) — adjudicated atomically with the admission
+writes, capacity included, so every admission refusal issues from
+one place.
 
 ### 4.5 Reconnect
 
 **"Reconnect" is not a protocol concept.** Every connection is a
-fresh connection presenting a full Connection Config. Continuity
-exists in exactly one place, where it is explicitly designed: the
-state cursor (§6.6). Media tracks have none — all per-track ids and
-receiver state are scoped to the (MoQ session, track) instance
-(§5.2). A ticket remains valid for reconnection until `exp`.
+fresh connection presenting a full Connection Config — in capability
+terms (§4.4), a reconnect is a re-exercise of the same capabilities,
+superseding any half-open predecessor. Continuity exists in exactly
+one place, where it is explicitly designed: the state cursor (§6.6).
+Media tracks have none — all per-track ids and receiver state are
+scoped to the (MoQ session, track) instance (§5.2). A ticket remains
+valid for reconnection until `exp` — title outlives every connection
+that exercises it.
 
 ### 4.6 Rejection and error codes
 
@@ -319,11 +351,12 @@ may be truncated or dropped, and MUST NOT require parsing.
 | `0x1A5A00` | malformed / schema-invalid Connection Config |
 | `0x1A5A01` | invalid ticket (signature, expired, not yet valid, wrong audience) |
 | `0x1A5A02` | `client_id` does not match the ticket claim |
-| `0x1A5A03` | id collision (unticketed live client or entity id) |
-| `0x1A5A04` | entity id collides with another client's live entity |
+| `0x1A5A03` | *retired 2026-08-13* (was: unticketed id collision — unticketed collisions now supersede, §4.4); MUST NOT be reused |
+| `0x1A5A04` | entity id collides with another client's live entity (ticketed; §4.4) |
 | `0x1A5A05` | ad-hoc entities not permitted for this ticket |
 | `0x1A5A06` | blocked |
 | `0x1A5A07` | space at capacity |
+| `0x1A5A08` | ticket presented to an unticketed space (§4.4) |
 
 The blocked rejection's reason string SHOULD carry the block expiry
 timestamp.
@@ -753,10 +786,19 @@ included, distinguished by the `kflags` bit above.
 
 - Ticket verification requirements are in §4.3; the `aud` check is
   the replay boundary between spaces.
-- Unticketed mode is fragile by design: identity is first-claim,
-  nothing prevents impersonation across connect boundaries, and
-  ad-hoc entities are admitted from anyone. Do not run it on open
-  networks.
+- Unticketed mode is fragile by design: identity is possession-based
+  and collisions resolve newest-wins (§4.4), so id takeover is
+  possible by construction; nothing prevents impersonation across
+  connect boundaries, and ad-hoc entities are admitted from anyone.
+  It is a development mode; do not run it on open networks.
+- In ticketed mode a stolen ticket can supersede the legitimate
+  holder's session — but a stolen ticket already grants full
+  impersonation; supersession adds no new capability.
+- Client ids and entity ownership are deliberately visible: the
+  entity marker's value names its owning client (base profile §6),
+  readable by every participant — including the linkage that several
+  entities share one owner. Client ids are names, never secrets and
+  never capabilities; the ticket is the capability.
 - A client that saw a key cannot be made to unsee it; visibility
   narrowing is hygiene, not security.
 - The sink-subscription privacy property is stated in §3.1.
@@ -770,7 +812,7 @@ included, distinguished by the `kflags` bit above.
 |---|---|
 | Connection Config SETUP parameter key | `0x1A5A1` |
 | State subscribe SUBSCRIBE parameter key | `0x1A5A3` |
-| Session error codes | `0x1A5A00`–`0x1A5A07` (§4.6) |
+| Session error codes | `0x1A5A00`–`0x1A5A08` (§4.6; `0x1A5A03` retired, never reused) |
 | Max state key length | 512 bytes |
 | Max state value length | 65 536 bytes |
 | Max ops per group | server constant (§6.1); reference implementation default 64 |

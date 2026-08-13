@@ -378,7 +378,12 @@ a boundary would break the single-authority chain.
 - **Recorded honesty note:** under unticketed v0, client ids are
   self-asserted, so block-by-id shares evict-old's id-weakness
   (documented together); the mechanism gains real teeth with
-  tickets.
+  tickets. *(2026-08-13: the collision rules around `Admit` are
+  superseded by `id-capabilities.md` — newest-wins on
+  same-capability contests in both modes, refuse on cross-client
+  entity collision in ticketed mode, claims at the engine;
+  implementation pending. The gate-before-Admit ordering and this
+  honesty note stand.)*
 - Key vocabulary from `profile/base` (F).
 
 **§7 outcome — work items:** the gate in lasa's `server` (sets,

@@ -20,9 +20,17 @@ import (
 const Prefix = "lasa."
 
 // EntityMarkerKey is the existence marker lasa.entity.{id}: set and
-// cleared by the server only. All other keys under the entity's prefix
-// MUST be ignored while it is absent.
+// cleared by the server only, valued with the owning client id (§6).
+// All other keys under the entity's prefix MUST be ignored while it
+// is absent; existence-only consumers treat the value as opaque.
 func EntityMarkerKey(id string) string { return "lasa.entity." + id }
+
+// ClientKey is the client claim record lasa.client.{id}: present iff
+// a connection is currently exercising the client id (core §4.4).
+// Server-written, value `true` (deliberately minimal), swept
+// immediately at disconnect, and in no role's read scope — clients
+// never receive it.
+func ClientKey(id string) string { return "lasa.client." + id }
 
 // EntityKey builds lasa.entity.{id}.{suffix}.
 func EntityKey(id, suffix string) string { return "lasa.entity." + id + "." + suffix }
@@ -42,21 +50,46 @@ func SignedAttrKey(id, path string) string { return EntityKey(id, "signed-attrs.
 // ordering (shortest key first) then satisfies the profile's SHOULD.
 func SweepScope(entityID string) string { return EntityMarkerKey(entityID) }
 
+// ClientSweepScope is the sweep scope for the connection's client
+// claim record. Passed alongside the per-entity SweepScopes so one
+// Close sweeps the whole claim set; within the sweep group the engine
+// orders shortest-first/bytewise, and any transient mid-group state a
+// replica observes is benign — replicas are advisory (core §4.4) and
+// consume the sweep as one group.
+func ClientSweepScope(clientID string) string { return ClientKey(clientID) }
+
+// ClientClaimGroup is the connection-level claim write: exactly one
+// per connection, written BEFORE any entity's AdmissionGroup (its own
+// group — the claim never shares a group with an attr-heavy entity,
+// which could overflow the core §6.1 op cap). Zero-entity observer
+// connections write this and nothing else.
+func ClientClaimGroup(clientID string) wire.Group {
+	return wire.Group{Ops: []wire.StateMessage{
+		wire.Set{Key: ClientKey(clientID), Value: []byte("true")},
+	}}
+}
+
 // AdmissionGroup builds the server-authored state group announcing an
-// admitted entity: the existence marker, the name, the config-derived
-// consumer vocabulary (channel memberships, render overrides, priority,
-// dof), and the signed attrs (from the ticket definition) plus unsigned
-// attrs (from the config or setup), flattened to dotted leaf keys with
-// JSON-encoded values per lasa-base-profile.md §1.
+// admitted entity: the existence marker (valued with the owning client
+// id, §6), the name, the config-derived consumer vocabulary (channel
+// memberships, render overrides, priority, dof), and the signed attrs
+// (from the ticket definition) plus unsigned attrs (from the config or
+// setup), flattened to dotted leaf keys with JSON-encoded values per
+// lasa-base-profile.md §1. The connection's ClientClaimGroup MUST have
+// been written before any AdmissionGroup.
 //
 // Channel memberships are materialized as the EFFECTIVE sets (§6): an
-// omitted config list writes `main`, an explicit empty list writes no
-// keys — under a live marker the present key set IS the membership.
+// omitted config list and an explicit empty list both write `main`
+// (§4) — under a live marker the present key set IS the membership.
 // Render fields, priority and dof are written only when the config sets
 // them (absence means the documented default).
-func AdmissionGroup(e *connect.ResolvedEntity) (wire.Group, error) {
+func AdmissionGroup(ownerClientID string, e *connect.ResolvedEntity) (wire.Group, error) {
+	owner, err := json.Marshal(ownerClientID)
+	if err != nil {
+		return wire.Group{}, err
+	}
 	ops := []wire.StateMessage{
-		wire.Set{Key: EntityMarkerKey(e.ID), Value: []byte("true")},
+		wire.Set{Key: EntityMarkerKey(e.ID), Value: owner},
 	}
 	name, err := json.Marshal(e.Name)
 	if err != nil {

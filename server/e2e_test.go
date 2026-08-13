@@ -391,11 +391,19 @@ func TestE2EDepartureSweep(t *testing.T) {
 	c := dial(t, sp, nil)
 	waitCond(t, "marker written", func() bool {
 		v, ok := engineGet(sp.srv, "lasa.entity.e1")
+		return ok && string(v) == `"c1"` // marker value = owning client id (profile §6)
+	})
+	waitCond(t, "client claim written", func() bool {
+		v, ok := engineGet(sp.srv, "lasa.client.c1")
 		return ok && string(v) == "true"
 	})
 	_ = c.Close()
 	waitCond(t, "marker swept", func() bool {
 		_, ok := engineGet(sp.srv, "lasa.entity.e1")
+		return !ok
+	})
+	waitCond(t, "client claim swept", func() bool {
+		_, ok := engineGet(sp.srv, "lasa.client.c1")
 		return !ok
 	})
 	waitCond(t, "EntityLeft", func() bool {

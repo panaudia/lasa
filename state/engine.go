@@ -84,6 +84,12 @@ type Engine struct {
 	subs      map[string]*Subscription // one per client id (invariant L4)
 	rulesSeen map[string][32]byte      // gate 4: last-attach read-rules hash per client id
 	observers []observerReg            // internal profile consumers (observer.go)
+
+	// Admission registry (admit.go): one admitted connection per client
+	// id, carrying its recorded sweep scopes — how supersession finds
+	// what an incumbent holds without the engine knowing key shapes.
+	conns         map[string]*Conn
+	totalEntities int // live admitted entities, for the capacity check
 }
 
 // New creates an engine and starts its actor.
@@ -97,6 +103,7 @@ func New(cfg Config) *Engine {
 		store:     map[string]*entry{},
 		subs:      map[string]*Subscription{},
 		rulesSeen: map[string][32]byte{},
+		conns:     map[string]*Conn{},
 	}
 	if cfg.Epoch != nil {
 		e.epoch = *cfg.Epoch
@@ -159,12 +166,27 @@ type Conn struct {
 	clientID string
 	rules    Rules
 	closed   bool // actor-owned
+
+	// done closes with the generation — the supersession signal
+	// (id-capabilities.md): a session holding this Conn learns it was
+	// displaced by observing its own generation end, never by callback.
+	done chan struct{}
+
+	// Recorded by Admit: the connection's full claim set as sweep
+	// scopes (claim key + entity markers) and its entity count (the
+	// capacity unit). Nil/zero for legacy Register connections.
+	sweepScopes []string
+	entityCount int
 }
 
 // Register registers a connection at admission, carrying its client id
 // and its merged access rules (state-engine-design.md §3).
+//
+// Register performs no adjudication and records no claim — it is the
+// pre-identity-work path, kept for tests and transitional callers; the
+// admission path is Engine.Admit (admit.go).
 func (e *Engine) Register(clientID string, rules Rules) (*Conn, error) {
-	c := &Conn{e: e, clientID: clientID, rules: rules}
+	c := &Conn{e: e, clientID: clientID, rules: rules, done: make(chan struct{})}
 	if err := e.do(func() {}); err != nil {
 		return nil, err
 	}
@@ -173,6 +195,11 @@ func (e *Engine) Register(clientID string, rules Rules) (*Conn, error) {
 
 // ClientID returns the connection's client id.
 func (c *Conn) ClientID() string { return c.clientID }
+
+// Done closes when the connection's generation ends — by its own Close
+// or by supersession (a newer exercise of the same capability,
+// lasa-core.md §4.4).
+func (c *Conn) Done() <-chan struct{} { return c.done }
 
 // Write applies client-authored ops (Set, Clear, or one Group per
 // message). All rejections are silent, per lasa-core.md §6.2: denied by
@@ -194,34 +221,51 @@ func (c *Conn) Write(msgs ...wire.StateMessage) error {
 // given scopes (exact-or-dot-extended), shortest key first so a scope's
 // root marker clears before its subtree (the base profile's marker-first
 // SHOULD). Atomic with closing the generation: no later write from this
-// connection can land after the sweep.
+// connection can land after the sweep. Called with no scopes, an
+// Admit-created connection sweeps its recorded claim set; a legacy
+// Register connection sweeps nothing.
 func (c *Conn) Close(sweepScopes ...string) error {
 	return c.e.do(func() {
-		if c.closed {
-			return
+		scopes := sweepScopes
+		if len(scopes) == 0 {
+			scopes = c.sweepScopes
 		}
-		c.closed = true
-		var keys []string
-		for k, en := range c.e.store {
-			if !en.tombstone && anyScope(sweepScopes, k) {
-				keys = append(keys, k)
-			}
-		}
-		sort.Slice(keys, func(i, j int) bool {
-			if len(keys[i]) != len(keys[j]) {
-				return len(keys[i]) < len(keys[j])
-			}
-			return keys[i] < keys[j]
-		})
-		if len(keys) == 0 {
-			return
-		}
-		ops := make([]wire.StateMessage, len(keys))
-		for i, k := range keys {
-			ops[i] = wire.Clear{Key: k}
-		}
-		c.e.applyGroup(ops)
+		c.e.closeConn(c, scopes)
 	})
+}
+
+// closeConn is the single close path — Conn.Close and Admit's
+// supersession both land here. Actor-owned.
+func (e *Engine) closeConn(c *Conn, scopes []string) {
+	if c.closed {
+		return
+	}
+	c.closed = true
+	close(c.done)
+	if e.conns[c.clientID] == c {
+		delete(e.conns, c.clientID)
+		e.totalEntities -= c.entityCount
+	}
+	var keys []string
+	for k, en := range e.store {
+		if !en.tombstone && anyScope(scopes, k) {
+			keys = append(keys, k)
+		}
+	}
+	sort.Slice(keys, func(i, j int) bool {
+		if len(keys[i]) != len(keys[j]) {
+			return len(keys[i]) < len(keys[j])
+		}
+		return keys[i] < keys[j]
+	})
+	if len(keys) == 0 {
+		return
+	}
+	ops := make([]wire.StateMessage, len(keys))
+	for i, k := range keys {
+		ops[i] = wire.Clear{Key: k}
+	}
+	e.applyGroup(ops)
 }
 
 // Write applies server-authored ops (profile consumer writes: existence

@@ -81,11 +81,10 @@ func TestE2EBlockedAtConnect(t *testing.T) {
 	if err := dialErr(t, sp, "c1"); err == nil {
 		t.Fatal("blocked client connected")
 	}
-	sp.backend.mu.Lock()
-	admitted := len(sp.backend.admitted)
-	sp.backend.mu.Unlock()
-	if admitted != 0 {
-		t.Fatalf("gate must refuse BEFORE Admit; backend saw %d admissions", admitted)
+	// The gate refuses BEFORE adjudication: a refused connection never
+	// reaches Engine.Admit, so its claim key is never written.
+	if _, ok := engineGet(sp.srv, "lasa.client.c1"); ok {
+		t.Fatal("gate must refuse BEFORE Admit; claim key was written")
 	}
 	// Expired blocks admit.
 	block(t, sp, "lasa.space.client.blocked.c3", "1") // 1970: long expired
@@ -108,9 +107,8 @@ func TestE2EBlockedWhileLive(t *testing.T) {
 	sp := startSpace(t, nil)
 	_ = dial(t, sp, nil) // ClientID c1, entity e1
 	waitCond(t, "admission", func() bool {
-		sp.backend.mu.Lock()
-		defer sp.backend.mu.Unlock()
-		return len(sp.backend.admitted) == 1
+		_, ok := engineGet(sp.srv, "lasa.client.c1")
+		return ok
 	})
 	block(t, sp, "lasa.space.client.blocked.c1", "0")
 	waitCond(t, "EntityLeft after live block", func() bool {
@@ -131,20 +129,22 @@ func TestE2EBlockedReconnectCannotEvict(t *testing.T) {
 	sp := startSpace(t, nil)
 	_ = dial(t, sp, nil) // c1 live
 	waitCond(t, "admission", func() bool {
-		sp.backend.mu.Lock()
-		defer sp.backend.mu.Unlock()
-		return len(sp.backend.admitted) == 1
+		_, ok := engineGet(sp.srv, "lasa.client.c1")
+		return ok
 	})
 	block(t, sp, "lasa.space.client.blocked.c1", "0")
-	// The live session is severed; now the (still blocked) id retries.
+	// The live session is severed (claim swept); the still-blocked id
+	// retries and must never reach adjudication again.
+	waitCond(t, "sever sweep", func() bool {
+		_, ok := engineGet(sp.srv, "lasa.client.c1")
+		return !ok
+	})
 	for i := 0; i < 3; i++ {
 		if err := dialErr(t, sp, "c1"); err == nil {
 			t.Fatal("blocked reconnect admitted")
 		}
 	}
-	sp.backend.mu.Lock()
-	defer sp.backend.mu.Unlock()
-	if len(sp.backend.admitted) != 1 {
-		t.Fatalf("blocked retries reached Admit: %v", sp.backend.admitted)
+	if _, ok := engineGet(sp.srv, "lasa.client.c1"); ok {
+		t.Fatal("blocked retries reached Admit: claim key rewritten")
 	}
 }

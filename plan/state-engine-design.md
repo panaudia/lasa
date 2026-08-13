@@ -177,10 +177,17 @@ SPI builds on:
   connection-lifecycle path. In panaudia terms: `ErrLagged` never
   reaches the departure funnel; the sweep is reachable solely from
   connection departure. The two evictions in this design — admission-
-  driven *connection* eviction (core §4.4, triggers the sweep) and
+  driven *connection* supersession (core §4.4, triggers the sweep) and
   lag-driven *subscription* termination (triggers only resync) — share
   a word and nothing else; the API keeps them as distinct entry
-  points.
+  points. *(2026-08-13, `id-capabilities.md`, implementation pending
+  — plan: `identity-implementation.md`: admission becomes an
+  adjudicated group primitive on this actor — claims are state keys
+  (`lasa.client.{id}`, marker value = owner), supersession =
+  close-incumbent-generation + sweep + apply in one actor step,
+  cross-owner and capacity refusals issued here. The grace-period
+  question resolved by deletion: profile §3 now forbids sweep grace,
+  so claim release and key sweep stay one atomic act.)*
 - **Structs, not bytes**: ops surface as (key, value, seq, tombstone,
   group boundary) values; all encoding lives in `wire`, applied by the
   shell. Group boundaries are recorded in the log so live delivery can

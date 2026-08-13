@@ -21,7 +21,7 @@ func opsAsMap(t *testing.T, g wire.Group) map[string]string {
 }
 
 func TestAdmissionGroupAdHoc(t *testing.T) {
-	g, err := AdmissionGroup(&connect.ResolvedEntity{
+	g, err := AdmissionGroup("c1", &connect.ResolvedEntity{
 		Entity: connect.Entity{
 			ID:   "e1",
 			Name: "Alice",
@@ -36,7 +36,7 @@ func TestAdmissionGroupAdHoc(t *testing.T) {
 	}
 	m := opsAsMap(t, g)
 	want := map[string]string{
-		"lasa.entity.e1":                 "true",
+		"lasa.entity.e1":                 `"c1"`, // marker value = owning client id (§6)
 		"lasa.entity.e1.name":            `"Alice"`,
 		"lasa.entity.e1.heard-in.main":   "true", // omitted list → effective default (§4)
 		"lasa.entity.e1.hears.main":      "true",
@@ -58,7 +58,7 @@ func TestAdmissionGroupAdHoc(t *testing.T) {
 }
 
 func TestAdmissionGroupSigned(t *testing.T) {
-	g, err := AdmissionGroup(&connect.ResolvedEntity{
+	g, err := AdmissionGroup("c1", &connect.ResolvedEntity{
 		Entity: connect.Entity{
 			ID:    "e1",
 			Name:  "Alice",
@@ -85,7 +85,7 @@ func TestAdmissionGroupSigned(t *testing.T) {
 // priority, dof.
 func TestAdmissionGroupMaterializesConfig(t *testing.T) {
 	gain, size, dof := 2.5, 0.4, 3
-	g, err := AdmissionGroup(&connect.ResolvedEntity{
+	g, err := AdmissionGroup("c1", &connect.ResolvedEntity{
 		Entity: connect.Entity{
 			ID:       "e1",
 			Name:     "Desk",
@@ -101,7 +101,7 @@ func TestAdmissionGroupMaterializesConfig(t *testing.T) {
 	}
 	m := opsAsMap(t, g)
 	want := map[string]string{
-		"lasa.entity.e1":                "true",
+		"lasa.entity.e1":                `"c1"`,
 		"lasa.entity.e1.name":           `"Desk"`,
 		"lasa.entity.e1.heard-in.stage": "true",
 		"lasa.entity.e1.heard-in.aux":   "true",
@@ -128,7 +128,7 @@ func TestAdmissionGroupMaterializesConfig(t *testing.T) {
 }
 
 func TestAttrArraysRejected(t *testing.T) {
-	_, err := AdmissionGroup(&connect.ResolvedEntity{
+	_, err := AdmissionGroup("c1", &connect.ResolvedEntity{
 		Entity: connect.Entity{ID: "e1", Name: "A", Attrs: map[string]any{"tags": []any{"x"}}},
 	})
 	if err == nil {
@@ -140,5 +140,29 @@ func TestScopeCoversSubtree(t *testing.T) {
 	// The sweep scope must cover the marker and every dotted descendant.
 	if SweepScope("e1") != "lasa.entity.e1" {
 		t.Fatal("sweep scope must be the marker key")
+	}
+	if ClientSweepScope("c1") != "lasa.client.c1" {
+		t.Fatal("client sweep scope must be the claim key")
+	}
+}
+
+// TestClientClaimGroup: the connection-level claim record — one Set,
+// lasa.client.{id} = true, its own group (identity-implementation.md
+// batch A: never shares a group with an attr-heavy entity).
+func TestClientClaimGroup(t *testing.T) {
+	g := ClientClaimGroup("c1")
+	if len(g.Ops) != 1 {
+		t.Fatalf("claim group must hold exactly one op, got %d", len(g.Ops))
+	}
+	s, ok := g.Ops[0].(wire.Set)
+	if !ok || s.Key != "lasa.client.c1" || string(s.Value) != "true" {
+		t.Fatalf("claim op = %+v", g.Ops[0])
+	}
+	// The claim key must be invisible to the audience read scope (§2):
+	// no participant-facing prefix may match it.
+	for _, prefix := range []string{"lasa.entity.", "lasa.space."} {
+		if len(s.Key) >= len(prefix) && s.Key[:len(prefix)] == prefix {
+			t.Fatalf("claim key %s under participant-facing prefix %s", s.Key, prefix)
+		}
 	}
 }

@@ -130,8 +130,9 @@ docs carry the decisions:
   self-contained server behind an SPI, panaudia maps entity →
   `ConnectionHandler`; old front ends left in place, `core/moq`
   deleted when stable; work order 1–8; three recorded v0 deviations
-  (global ambi order, evict-old unticketed admission, memory-only
-  state) each with reopen triggers; two spec errata candidates
+  (global ambi order, evict-old unticketed admission — closed
+  2026-08-13, newest-wins decided in `id-capabilities.md` —
+  memory-only state) each with reopen triggers; two spec errata candidates
   (§6.2 echo-outside-subscription, §6.6 cursor-not-before-first-
   catch-up-frontier).
 - **`state-engine-design.md`** — actor-owned writer + bounded
@@ -230,7 +231,9 @@ Session goal: pull together a new lasa2 draft. Decisions taken:
 - **`connection-and-auth.md` is complete** (item 4 cleared, all
   decided 2026-07-27): Connection Config rides CLIENT_SETUP as a
   custom setup parameter (rejected alternatives + Eyevinn v0.8.2 fork
-  notes recorded); unticketed = fragile mode, live-collision rejects,
+  notes recorded); unticketed = fragile mode, live-collision rejects
+  (superseded 2026-08-13: newest-wins in both modes, dev-mode
+  framing, ticketed-XOR-unticketed — `id-capabilities.md`),
   `audience` only; `client_id` replaces jti-as-identity (schemas
   updated & validated); setups instantiate ticket entities, ad-hoc
   entities need admin/presenter, both may coexist (`oneOf`→`anyOf`);

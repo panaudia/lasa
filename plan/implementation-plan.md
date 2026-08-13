@@ -79,6 +79,14 @@ Recorded so they cannot drift silently; each has a reopen trigger.
    the §5 moderation gate's block-by-client-id shares exactly this
    id-weakness under unticketed mode — a blocked client can hop ids;
    both gain real teeth together when tickets land.)*
+   ***Closed 2026-08-13 (`id-capabilities.md`): the reopen trigger
+   fired with the ticket work. Newest-wins is now the decided rule in
+   both modes — the deviation's behaviour promoted to spec, corrected
+   at one cell (a ticketed entity collision across different clients
+   refuses; a bystander is never severed on entity grounds) and
+   extended to zero-entity sessions via the engine claim point. The
+   moderation-gate id-weakness note stands as recorded dev-mode
+   fragility.***
 3. **Memory-only state store.** The base profile SHOULDs durable
    `lasa.space.*`. v0 restarts mint a new epoch and drop everything —
    a restart can un-kick (the profile's own recorded weakness, §3).

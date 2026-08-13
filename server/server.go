@@ -37,10 +37,18 @@ type Config struct {
 	// plan/panaudia-server-design.md §1). nil disables anchor emission.
 	SampleEpoch func(sampleTS uint64) uint64
 
-	// TicketKeys verifies tickets; AllowUnticketed admits configs without
-	// one (dev/demo/closed-network mode). At least one must be usable.
+	// TicketKeys verifies tickets; AllowUnticketed runs the space
+	// unticketed (dev/demo/closed-network mode). A space is ticketed
+	// XOR unticketed (lasa-core.md §4.4): exactly one must be set —
+	// New rejects both and neither, so no embedder can build a mixed
+	// mode, and an unticketed space rejects any presented ticket.
 	TicketKeys      []ed25519.PublicKey
 	AllowUnticketed bool
+
+	// Capacity caps live admitted entities space-wide; 0 = unlimited.
+	// Adjudicated with the admission at the state engine, so every
+	// admission refusal issues from one place (id-capabilities.md).
+	Capacity int
 
 	// AdHocPermitted decides whether a ticketed connection may carry
 	// ad-hoc entity definitions — profile policy over the ticket's roles
@@ -149,14 +157,35 @@ func (s *Server) severMatching(cause error, match func(clientID string, roles []
 	}
 }
 
-// SeverClient cancels every live session carrying the given client id;
-// teardown then runs each session's normal departure funnel (the
-// embedder sees EntityLeft). This is the trigger half of the SPI's
-// Admit-may-block contract (server-spi.md (f)): an evict-old embedder
-// calls it from Admit on collision, then waits for the predecessor's
-// EntityLeft before admitting the replacement.
-func (s *Server) SeverClient(clientID string) {
-	s.severMatching(errEvicted, func(id string, _ []string) bool { return id == clientID })
+// severSuperseded cancels every live session carrying one of the
+// superseded client ids (the engine's Admit verdict) and returns them
+// so the successor can wait on their teardown — the mixer's
+// Remove-before-Add ordering, shell-internal since the SPI's
+// Admit-may-block contract was deleted (identity-implementation.md
+// batch C). self is excluded: on a same-client supersession the
+// successor is already registered under the same id. Sessions still
+// mid-handshake are not here; they find their closed generation at
+// registration (conn.go start).
+func (s *Server) severSuperseded(self *connSession, clientIDs []string) []*connSession {
+	if len(clientIDs) == 0 {
+		return nil
+	}
+	ids := map[string]bool{}
+	for _, id := range clientIDs {
+		ids[id] = true
+	}
+	s.liveMu.Lock()
+	var hit []*connSession
+	for cs, info := range s.live {
+		if cs != self && ids[info.clientID] {
+			hit = append(hit, cs)
+		}
+	}
+	s.liveMu.Unlock()
+	for _, cs := range hit {
+		cs.cancel(errEvicted)
+	}
+	return hit
 }
 
 // New validates cfg, starts the engine and the presence loop.
@@ -166,6 +195,9 @@ func New(cfg Config) (*Server, error) {
 	}
 	if len(cfg.TicketKeys) == 0 && !cfg.AllowUnticketed {
 		return nil, errors.New("server: no ticket keys and unticketed connections not allowed")
+	}
+	if len(cfg.TicketKeys) > 0 && cfg.AllowUnticketed {
+		return nil, errors.New("server: a space is ticketed XOR unticketed — ticket keys with AllowUnticketed is mixed mode, which does not exist (lasa-core.md §4.4)")
 	}
 	if cfg.AmbiOrder != 0 && cfg.AmbiOrder != 2 && cfg.AmbiOrder != 3 {
 		return nil, fmt.Errorf("server: invalid AmbiOrder %d", cfg.AmbiOrder)
@@ -282,14 +314,20 @@ func (s *Server) ServeConn(transportCtx context.Context, conn moqtransport.Conne
 	return context.Cause(cs.ctx)
 }
 
-// verifyTicket runs ticket verification for a config, honouring the
-// unticketed mode.
+// verifyTicket enforces the space mode (ticketed XOR unticketed,
+// lasa-core.md §4.4): a ticketed space requires a ticket, an unticketed
+// space rejects one — a client presenting a ticket believes it is
+// getting signed identity, and silently admitting it with claim-based
+// identity would be a quiet degradation. Mode mismatch fails loudly.
 func (s *Server) verifyTicket(cfg *connect.ConnectionConfig) (*connect.Ticket, *connect.Rejection) {
 	if cfg.Ticket == "" {
 		if !s.cfg.AllowUnticketed {
 			return nil, &connect.Rejection{Code: wire.ErrCodeInvalidTicket, Reason: "ticket required"}
 		}
 		return nil, nil
+	}
+	if s.cfg.AllowUnticketed {
+		return nil, &connect.Rejection{Code: wire.ErrCodeModeMismatch, Reason: "this space is unticketed; do not present a ticket"}
 	}
 	v := &connect.Verifier{SpaceID: s.cfg.SpaceID, Keys: s.cfg.TicketKeys}
 	return v.Verify(cfg.Ticket)

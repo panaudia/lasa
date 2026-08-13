@@ -164,6 +164,12 @@ the `server` package later as a utility, not an SPI change.
 - **(f) Admit may block** for predecessor eviction; the alternative
   (shell-side retry/pending machinery) buys nothing panaudia's
   departure funnel doesn't already provide.
+  *Superseded 2026-08-13 (`id-capabilities.md`; plan:
+  `identity-implementation.md`), implementation pending: claims
+  become state keys adjudicated atomically on the state actor
+  (capacity included), supersession's teardown wait becomes shell
+  machinery on the live registry, and `Admit` is deleted from the
+  SPI outright — collision and capacity both leave the embedder.*
 
 ## Recorded seams (not built)
 

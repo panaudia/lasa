@@ -16,7 +16,6 @@ import (
 type stubBackend struct {
 	mu        sync.Mutex
 	entities  map[string]*stubEntity
-	admitted  []string
 	left      []string
 	collector *presence.Collector
 }
@@ -44,13 +43,6 @@ type stubPacket struct {
 
 func newStubBackend() *stubBackend {
 	return &stubBackend{entities: map[string]*stubEntity{}}
-}
-
-func (b *stubBackend) Admit(res *connect.Resolved) *connect.Rejection {
-	b.mu.Lock()
-	defer b.mu.Unlock()
-	b.admitted = append(b.admitted, res.ClientID)
-	return nil
 }
 
 func (b *stubBackend) EntityJoined(clientID string, e connect.ResolvedEntity) (EntityHandler, error) {
