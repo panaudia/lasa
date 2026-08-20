@@ -141,15 +141,56 @@ replicas via observers and never adjudicate locally.
       with batch E's client work.
       Full suites green in both repos, `-race` clean on server+state.
 
-## Batch E — ripple
+## Batch E — ripple (TS side done 2026-08-13; bridge pending)
 
-- [ ] TS SDK / bridge: anywhere a marker is read, existence-only
-      semantics must hold (value no longer `true`); ownership becomes
-      available to server-side consumers. Thread when tickets reach
-      those clients (next phase of the ticket work).
-- [ ] `plan/` annotations referencing "Register becomes the claim
-      point" (server-spi.md, state-engine-design.md, build ledger)
-      point here — updated with this plan.
+- [x] TS SDK marker semantics: verified value-blind throughout (no
+      `"true"` assumptions anywhere in src; the store is a generic
+      KV). Nothing to change.
+- [x] TS SDK ticket path exercised end-to-end in real Chrome
+      (`tests/ticketed.spec.ts` + `spike/ticketed.ts`, dual-server
+      rig in `tests/global-setup.ts` — 44443 open XOR 44444 ticketed,
+      issuer keypair generated per run, tickets minted in Node via
+      `tests/mint-ticket.ts`, no new deps): ticket+setups admits;
+      no-ticket refused; ticket-into-open-space refused; same-ticket
+      reconnect supersedes the predecessor, whose `onClosed` fires.
+      Manually confirmed in Chrome for the unticketed path (Paul,
+      2026-08-13); ticketed path browser-verified by the rig.
+- [x] TS SDK rejection surfacing built and unit-tested: `LASA_ERR`
+      table + `LasaRejectionError` (`src/lasa/errors.ts`, exported),
+      worker captures close info (graceful capsule AND abrupt
+      closes), `fail` replies carry closeCode/closeReason, connect()
+      rejects typed, `onClosed` option on `LasaClientOptions`.
+- [ ] **KNOWN DEFECT — WT close codes never arrive.** Full record,
+      suspected mechanism, fix ladder and ready-made acceptance
+      criteria: **`wt-close-code-defect.md`**. Short form: rejections
+      and severs over WebTransport lose their §4.6 code (Chrome:
+      "Connection lost"; Go WT client: bare `EOF`); raw QUIC is
+      unaffected (`TestRawQUICRejectionCarriesCode` passes), so the
+      bridge is clean; suspect is webtransport-go v0.12.0's close
+      path; reproductions parked skipped in panaudia-server; the
+      browser spec's code assertions are soft-conditional until the
+      fix lands.
+- [x] Bridge tickets (2026-08-13): rig `Ticket` →
+      `bridge.Config.Ticket` → `client.Dial` (mapping pinned in
+      `TestBridgeConfigMapping`); header UI — ticket chip right of
+      the server chip, popover with a wide mono input, chip shows the
+      decoded `client_id` claim (display-only; server verifies) and
+      warns on mismatch with the rig's client_id (the 0x1A5A02
+      foot-gun caught at edit time); empty input deletes the field
+      (omitempty keeps saved rigs clean). Setups-vs-ad-hoc resolved
+      by the rig's recorded stance ("ticket = authorization only,
+      never rig content"): rig entities stay ad-hoc, so a ticketed
+      space needs the ticket to bear presenter/admin — revisit only
+      if ticket-defined-entity workflows appear.
+- [ ] Bridge `InsecureTLS` dev posture ("the ticket pass brings real
+      TLS" — rig.go) — deliberately NOT taken in this pass; wants its
+      own cert-handling design (real cert vs pinned hash vs dev
+      skip-verify knob).
+- [ ] Manual ticketed passes: bridge against a ticketed space (raw
+      QUIC — rejection codes work today); browser via the spike page
+      (needs a ticket input, or drive via the playwright rig's
+      recipe).
+- [x] `plan/` annotations point here.
 - [ ] Memory + `lasa-protocol-design.md` sibling note at completion.
 
 ## Recorded subtleties (do not lose)

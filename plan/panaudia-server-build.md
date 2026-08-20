@@ -859,6 +859,14 @@ for any engine Layer-1 divergence; Paul's git.
       ported to the LASA SDK + page banner with recovery advice).
       Divergence recorded in SDK PROVENANCE.md; evidence retained
       in bluetooth-hfp-todo.md (now marked DONE).
+- [ ] WT close codes never reach the client (found 2026-08-13 by the
+      identity browser rig; full record + fix ladder:
+      `wt-close-code-defect.md`). Rejections/severs over WebTransport
+      lose their §4.6 code; raw QUIC unaffected. Reproductions parked
+      skipped here (`TestWTRejectionCarriesCode`,
+      `TestWTRejectionProbe`); fix = webtransport-go fork/vendor
+      patch (+ possibly moqtransport fork), version bump through
+      Paul.
 - [ ] identity changes (decided 2026-08-13, `id-capabilities.md` —
       both same-day decisions; spec + profile text updated; full
       sequenced plan: **`identity-implementation.md`**): claims as
