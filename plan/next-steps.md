@@ -290,7 +290,7 @@ Session goal: pull together a new lasa2 draft. Decisions taken:
   lifetimes, channels, moderation, full key vocabulary). `lasa2.md`
   is now a pointer stub. Wire constants pinned in the writing:
   Connection Config SETUP param key `0x1A5A1`, state-subscribe
-  SUBSCRIBE param key `0x1A5A3`, error codes `0x1A5A00`–`07`,
+  SUBSCRIBE param key `0x1A5A3`, error codes `0x1A5A00`–`08`,
   subscribe-KVP layout.
 
 ## What's next (post-spec)

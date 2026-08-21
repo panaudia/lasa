@@ -150,6 +150,14 @@ func AdmissionGroup(ownerClientID string, e *connect.ResolvedEntity) (wire.Group
 		}
 		ops = append(ops, setupOps...)
 	}
+	// The store's value cap applies to admission writes like any other
+	// (core §9); an oversized config attr rejects the connection here,
+	// cleanly, rather than reaching the engine.
+	for _, op := range ops {
+		if s, ok := op.(wire.Set); ok && len(s.Value) > wire.MaxValueLen {
+			return wire.Group{}, fmt.Errorf("value for %s exceeds %d bytes", s.Key, wire.MaxValueLen)
+		}
+	}
 	return wire.Group{Ops: ops}, nil
 }
 

@@ -51,7 +51,8 @@ zero. u8 wrap is harmless at membership-change rates.
 
 ### 2. Keyframes chunk cleanly across MTU
 
-A roster of UUID-ish ids outgrows one datagram beyond ~30 entities, so
+A roster of UUID-ish ids outgrows one datagram beyond ~20 entities
+(57-byte krecords against the implementation's 1150-byte chunks), so
 a keyframe is one-or-more **chunks**, each self-contained: `first` is
 the index of the chunk's first record; subsequent records increment.
 No reassembly, no ordering requirement; a lost chunk costs only those

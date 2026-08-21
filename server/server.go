@@ -17,6 +17,7 @@ import (
 	"github.com/quic-go/quic-go"
 
 	"github.com/panaudia/lasa/connect"
+	"github.com/panaudia/lasa/ident"
 	"github.com/panaudia/lasa/presence"
 	"github.com/panaudia/lasa/state"
 	"github.com/panaudia/lasa/wire"
@@ -61,10 +62,11 @@ type Config struct {
 	// unticketed connections carry no roles and never qualify.
 	SinkAll func(roles []string) bool
 
-	// AmbiFormats decides whether a connection may subscribe the
-	// ambisonic sink formats — profile policy over the ticket's roles
-	// (base profile: admin and producer). nil means never.
-	AmbiFormats func(roles []string) bool
+	// ValidRoles decides whether a ticket's role names are acceptable —
+	// profile vocabulary over an opaque core (base profile §2: a role
+	// name outside the vocabulary rejects the connection as an invalid
+	// ticket, 0x1A5A01). nil accepts any role name.
+	ValidRoles func(roles []string) bool
 
 	// SinkRedundancy decides whether an entity's declared sink
 	// redundancy (lasa-core.md §4.2: the client's request that the
@@ -80,11 +82,11 @@ type Config struct {
 	// Required.
 	RulesFor func(res *connect.Resolved) state.Rules
 
-	// AmbiOrder is the highest ambisonic sink order the space offers
-	// (2026-08-04, superseding deviation 1's exactly-one-format rule):
-	// 0 offers binaural only; N ≥ 2 offers every ambi format UP TO N
-	// alongside binaural (ambi2 at N=2; ambi2+ambi3 at N=3). Embedders
-	// derive it from their render bus order.
+	// AmbiOrder is the ambisonic order the space renders internally —
+	// its render bus order, range 2–5; 0 defaults to 2. The sink
+	// offering derives from it (lasa-core.md §3): binaural and ambi2
+	// always, ambi3 when the order is ≥ 3 (the wire formats top out at
+	// third order). Embedders set it from their render bus.
 	AmbiOrder int
 
 	// Engine configures the state engine.
@@ -193,14 +195,23 @@ func New(cfg Config) (*Server, error) {
 	if cfg.SpaceID == "" || cfg.Backend == nil || cfg.RulesFor == nil {
 		return nil, errors.New("server: SpaceID, Backend and RulesFor are required")
 	}
+	if !ident.ValidIdentifier(cfg.SpaceID) {
+		// Fail at config time: a space id outside the §2 grammar could
+		// never match a schema-valid ticket aud, silently making every
+		// ticket unusable at runtime.
+		return nil, fmt.Errorf("server: SpaceID %q is not a valid identifier (lasa-core.md §2: [a-z0-9-]{1,128})", cfg.SpaceID)
+	}
 	if len(cfg.TicketKeys) == 0 && !cfg.AllowUnticketed {
 		return nil, errors.New("server: no ticket keys and unticketed connections not allowed")
 	}
 	if len(cfg.TicketKeys) > 0 && cfg.AllowUnticketed {
 		return nil, errors.New("server: a space is ticketed XOR unticketed — ticket keys with AllowUnticketed is mixed mode, which does not exist (lasa-core.md §4.4)")
 	}
-	if cfg.AmbiOrder != 0 && cfg.AmbiOrder != 2 && cfg.AmbiOrder != 3 {
-		return nil, fmt.Errorf("server: invalid AmbiOrder %d", cfg.AmbiOrder)
+	if cfg.AmbiOrder == 0 {
+		cfg.AmbiOrder = 2
+	}
+	if cfg.AmbiOrder < 2 || cfg.AmbiOrder > 5 {
+		return nil, fmt.Errorf("server: invalid AmbiOrder %d (the space's internal render order; valid range 2–5)", cfg.AmbiOrder)
 	}
 	if cfg.PresenceInterval == 0 {
 		cfg.PresenceInterval = 50 * time.Millisecond
@@ -333,14 +344,12 @@ func (s *Server) verifyTicket(cfg *connect.ConnectionConfig) (*connect.Ticket, *
 	return v.Verify(cfg.Ticket)
 }
 
-// sinkFormatOffered: binaural always; ambi formats up to the configured
-// AmbiOrder (the derived-offering rule that superseded deviation 1).
+// sinkFormatOffered: binaural and ambi2 always (lasa-core.md §3);
+// ambi3 when the space renders at third order or higher.
 func (s *Server) sinkFormatOffered(format string) bool {
 	switch format {
-	case "binaural":
+	case "binaural", "ambi2":
 		return true
-	case "ambi2":
-		return s.cfg.AmbiOrder >= 2
 	case "ambi3":
 		return s.cfg.AmbiOrder >= 3
 	}

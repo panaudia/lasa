@@ -324,21 +324,38 @@ func (c *Client) SubscribeSink(ctx context.Context, entityID, format string, h f
 }
 
 // SubscribePresence subscribes the space's presence track; h receives
-// *wire.PresenceDelta / *wire.PresenceKeyframe.
-func (c *Client) SubscribePresence(ctx context.Context, h func(any)) (*moqtransport.RemoteTrack, error) {
+// each packet's datagram group-id and the parsed *wire.PresenceDelta /
+// *wire.PresenceKeyframe. The group-id is part of the §7 receive
+// contract (per-index latest-wins); most consumers want
+// SubscribeRoster, which applies the §7 rules once and maintains the
+// roster.
+func (c *Client) SubscribePresence(ctx context.Context, h func(groupID uint64, msg any)) (*moqtransport.RemoteTrack, error) {
 	ns := ident.PresenceNamespace(c.cfg.SpaceID)
 	rt, err := c.session.Subscribe(ctx, ns.Tuple(), ident.TrackPresence)
 	if err != nil {
 		return nil, err
 	}
 	if alias, ok := rt.TrackAlias(); ok {
-		c.addRoute(alias, func(_ uint64, payload []byte) {
+		c.addRoute(alias, func(groupID uint64, payload []byte) {
 			if msg, err := wire.ParsePresence(payload); err == nil {
-				h(msg)
+				h(groupID, msg)
 			}
 		})
 	}
 	return rt, nil
+}
+
+// SubscribeRoster subscribes presence and maintains a Roster from it —
+// the §7 client rules (generation discard, per-index latest-wins,
+// reset on generation change) applied in the SDK. Close the returned
+// track to unsubscribe; the Roster then simply stops updating.
+func (c *Client) SubscribeRoster(ctx context.Context) (*Roster, *moqtransport.RemoteTrack, error) {
+	r := NewRoster()
+	rt, err := c.SubscribePresence(ctx, r.Apply)
+	if err != nil {
+		return nil, nil, err
+	}
+	return r, rt, nil
 }
 
 func (c *Client) addRoute(alias uint64, h func(seq uint64, payload []byte)) {

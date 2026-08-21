@@ -32,6 +32,12 @@ type render struct {
 	key     sinkKey
 	writer  *sinkWriter
 	session SinkSession
+	// pending counts subscribers between ensure and
+	// addPublisher/release (guarded by sinkManager.mu): a render with
+	// pending holds is never stopped, and a failed Accept releases its
+	// hold instead of leaking a zero-subscriber render (§3.2: the
+	// server renders only while a subscription is active).
+	pending int
 }
 
 type pubEntry struct {
@@ -66,12 +72,15 @@ func (m *sinkManager) declOf(entityID string) uint8 {
 	return m.decl[entityID]
 }
 
-// ensure returns the (entity, format) render, starting it if absent.
+// ensure returns the (entity, format) render, starting it if absent,
+// and takes a pending hold on it: the caller MUST follow with
+// addPublisher (subscribe completed) or release (it did not).
 func (m *sinkManager) ensure(entityID, format string) (*render, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	key := sinkKey{entityID, format}
 	if r, ok := m.renders[key]; ok {
+		r.pending++
 		return r, nil
 	}
 	r := &render{key: key, writer: &sinkWriter{sampleEpoch: m.sampleEpoch, red: m.declOf(entityID)}}
@@ -81,6 +90,7 @@ func (m *sinkManager) ensure(entityID, format string) (*render, error) {
 		return nil, err
 	}
 	r.session = session
+	r.pending = 1
 	m.renders[key] = r
 	return r, nil
 }
@@ -88,6 +98,7 @@ func (m *sinkManager) ensure(entityID, format string) (*render, error) {
 func (m *sinkManager) addPublisher(r *render, pub moqtransport.Publisher, owner *connSession) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	r.pending--
 	old := r.writer.pubs.Load()
 	var next []pubEntry
 	if old != nil {
@@ -95,6 +106,20 @@ func (m *sinkManager) addPublisher(r *render, pub moqtransport.Publisher, owner 
 	}
 	next = append(next, pubEntry{pub: pub, owner: owner})
 	r.writer.pubs.Store(&next)
+}
+
+// release undoes ensure's hold when the subscribe never completed
+// (Accept failure): the render stops unless a publisher or another
+// pending subscriber still holds it.
+func (m *sinkManager) release(r *render) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	r.pending--
+	pubs := r.writer.pubs.Load()
+	if r.pending == 0 && (pubs == nil || len(*pubs) == 0) && m.renders[r.key] == r {
+		r.session.Stop()
+		delete(m.renders, r.key)
+	}
 }
 
 // dropConn removes every publisher owned by cs, stopping renders whose
@@ -117,7 +142,7 @@ func (m *sinkManager) dropConn(cs *connSession) {
 			continue
 		}
 		r.writer.pubs.Store(&next)
-		if len(next) == 0 {
+		if len(next) == 0 && r.pending == 0 {
 			r.session.Stop()
 			delete(m.renders, key)
 		}

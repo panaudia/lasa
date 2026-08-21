@@ -404,6 +404,13 @@ for any engine Layer-1 divergence; Paul's git.
 - Not a Layer-1 change (validation + docs only; no PROVENANCE entry).
 
 ### P4 — ambisonic sink formats — DONE 2026-08-05
+
+*(Item 2 below REVERSED 2026-08-21: the ambi role gate is removed —
+sink formats carry no authorization dimension (core §3).
+`AmbiFormats`/`AmbiPermitted`/`Binding.AmbiFormats` deleted;
+`AmbiOrder` now takes the bus order (2–5) directly and the shell
+derives the offering, so the `min(Order, 3)` clamp in item 1 is gone
+too.)*
 - Design (settled with Paul across the order/roles/normalisation
   discussions; supersedes deviation 1):
   1. ONE order knob — `PANAUDIA_ORDER` (2–5). Offering DERIVED:

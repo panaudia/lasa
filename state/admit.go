@@ -138,7 +138,7 @@ func (e *Engine) Admit(req AdmitRequest) (conn *Conn, superseded []string, err e
 		for _, m := range req.Groups {
 			switch v := m.(type) {
 			case wire.Group:
-				e.applyGroup(v.Ops)
+				e.applyChunked(v.Ops)
 			case wire.Set, wire.Clear:
 				e.applyGroup([]wire.StateMessage{m})
 			}

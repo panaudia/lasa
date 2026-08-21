@@ -6,7 +6,6 @@
     "additionalProperties": false,
     "required": [
         "iss",
-        "iat",
         "aud",
         "panaudia"
     ],
@@ -18,9 +17,6 @@
     },
     "properties": {
         "iss": {
-            "type": "string"
-        },
-        "jti": {
             "type": "string"
         },
         "aud": {
@@ -49,7 +45,7 @@
                     "type": "array",
                     "items": {
                         "type": "string",
-                        "enum": ["admin", "presenter", "moderator", "producer", "audience"]
+                        "pattern": "^[a-z0-9-]{1,128}$"
                     }
                 },
                 "permissions": {

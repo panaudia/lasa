@@ -23,8 +23,8 @@ func rejectf(code uint32, format string, args ...any) *Rejection {
 }
 
 // Convenience constructors for the codes connect itself raises; the
-// admission-time collision codes (0x1A5A03/04) and capacity/blocked codes
-// belong to the server.
+// admission-time collision code (0x1A5A04; 0x1A5A03 is retired, never
+// issued) and capacity/blocked codes belong to the server.
 func rejectMalformed(format string, args ...any) *Rejection {
 	return rejectf(wire.ErrCodeMalformedConfig, format, args...)
 }

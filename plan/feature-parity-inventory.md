@@ -34,7 +34,7 @@ fixed pool sizes.
 | `PANAUDIA_TICKET_KEY_PATH` (Ed25519 PEM file) | `PANAUDIA_TICKET_KEY` (base64 raw 32 B value) | CARRIED (renamed + format change; §9) |
 | `PANAUDIA_UNTICKETED` | `PANAUDIA_ALLOW_UNTICKETED` (explicit opt-in since 2026-08-09; exactly one of key / opt-in) | CARRIED |
 | `PANAUDIA_SPACE_ORDER` | `PANAUDIA_ORDER` (2–5; ambi offering derives) | CARRIED |
-| `PANAUDIA_SPACE_MAX_SOURCES` (documented cap unenforced) | `PANAUDIA_MAX_ENTITIES` (enforced at admission, 0x1A5A05 at capacity) | CARRIED (and now real) |
+| `PANAUDIA_SPACE_MAX_SOURCES` (documented cap unenforced) | `PANAUDIA_MAX_ENTITIES` (enforced at admission, 0x1A5A07 at capacity) | CARRIED (and now real) |
 | `PANAUDIA_REVERB_PRESET` (int 0–5, undocumented beyond 0) | `PANAUDIA_REVERB` (named: none/tight-room/small-room/medium-room/large-hall/cathedral) | CARRIED (named presets; **default differs**: old default 0=none, new default medium-room — §9 migration note) |
 | `PANAUDIA_SPACE_SIZE` (cubic world scaling) | — | DROPPED: engine is metres-native (greenfield I-D); no world cube, distance model is absolute |
 | `PANAUDIA_GOMAXPROCS` | — (`PANAUDIA_WORKERS` sizes the engine pool) | DROPPED: Go defaults + explicit worker knob |
@@ -80,7 +80,7 @@ fixed pool sizes.
 | `space.entity.mute/unmute`, `set_gain`, `set_attenuation` | `lasa.entity.<id>.mute` / render keys via profile consumer (S4) | CARRIED |
 | `space.entity.kick/unkick` (mins, 0=forever) | block key with unix-seconds expiry, 0=forever; severs live + refuses readmission (L4/S5) | CARRIED |
 | `personal.entity.mute/unmute/solo/unsolo` | pair record (P1): personal mute BIDIRECTIONAL (deliberate change), solo beats personal mutes, space moderation above all | CARRIED (semantics deliberately improved; old solo-bypasses-space-mute retired) |
-| `space.role.*` / `personal.role.*` (role-TARGETED moderation: mute/kick/gain a whole role at once) | — (roles grant permissions; no role-targeted moderation keys) | OPEN: was anyone using role-targeted moderation? If yes it needs a vocabulary addition; if no, record as dropped |
+| `space.role.*` / `personal.role.*` (role-TARGETED moderation: mute/kick/gain a whole role at once) | `lasa.space.role.blocked.{role-name}` (block/kick a whole role, unix-seconds expiry — profile §5); no role-wide mute/gain | CARRIED (block/kick); role-wide mute/gain dropped — add to the vocabulary if ever missed |
 | Hardcoded role table (everyone/admin/moderator/performer/audience, recompile to change) | profile/base §2 tables as code (audience/presenter/producer/moderator/admin), wildcard scopes, ticket-carried | CARRIED (still code-defined, but the ticket carries literal grants too — strictly more expressive) |
 | Read scopes (`entity.all`, `space.read`) | prefix subscriptions + RulesFor read hash | SUPERSEDED |
 

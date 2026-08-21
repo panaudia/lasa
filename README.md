@@ -1,80 +1,101 @@
 # LASA — Live Atomic Spatial Audio
 
-A binary wire format for **live, lossy-tolerant, source-authored object-based and ambisonic audio streaming** over UDP and MOQ.
+A protocol for live, object-based, spatial audio streaming.
 
-LASA is a work in progress by the [Panaudia](https://github.com/panaudia) team. 
-It represents our ongoing exploration of a pragmatic wire format for live spatial audio and is the format 
-we're using to build the next version of Panaudia.
+LASA is quite different from both the Open Media Alliance's recent Eclipsa/IETF work and MPEG-I, it has a deliberately narrower scope 
+and covers an area that neither of these protocols currently does: live, multi-user, object-based, low-latency, spatial audio for shared virtual spaces.
 
-> **⚠ Status: work in progress.** LASA v1 is a single-author draft. No reference implementation has been published yet, no implementations have been field-tested, and the spec is expected to change as it gets exercised. Do not build production systems against it. Breaking changes are still fair game before v1 is declared stable.
+### Features:
 
----
+- Multi-track object-based sources
+- Binaural and ambisonic sinks
+- Audio and pose data in the same packet
+- Real-time DB for state
+- Built on Media over QUIC
+- MIT licenced
 
-## What is LASA?
+### Design
 
-Each LASA packet carries one source's audio frame plus the intrinsic state of that source at that moment — position, orientation, gain, directivity, diffusion, distance rolloff. Every packet is **atomic and self-describing**: a receiver can parse any single packet in isolation and have the full current truth for one source.
+Architectually, LASA is split between two types of data:
 
-That atomicity is the central design property and the source of the spec's name. It means:
+- Atomic: Fast, regular, stateless (audio and pose)
+- Stateful: Uneven in regularity and size, extensible, cachable (everything else)
 
-- **Packet loss has no cumulative effect.** The next packet from the same source restores full state.
-- **There's no session state to recover** after a disconnect, a late join, or a relay restart. Every packet is a complete unit.
-- **Receivers stay simple.** No event playback, no delta reconstruction, no anchor-and-replay.
-- **Many independent sources can publish in parallel** without coordinating their clocks or sequencing through a central authority.
+They are handled in quite different ways due to these characteristics.
 
-The full spec lives in [`lasa.md`](lasa.md).
+**MoQ**
 
-## Why LASA exists
+LASA should really be called LASAoMoQ as we have taken the decision to commit to Media over QUIC as the transport. 
+Doing so allows LASA to take advantage of several features inherent in the protocol:
 
-The spatial audio standards landscape today is rich for **file-based mastering** and for **delivery of finished mixes** to consumers, but there is no open, lean, lossy-tolerant format for the in-between case: the **live, distributed, many-source-to-mixer hop** that cloud spatial-audio systems need.
+MoQ provides a single resilient connection with TLS that can carry both low-latency, multi-track audio via datagrams,
+and multiple reliable streams of state data. 
 
-When building a cloud ambisonic mixer (panaudia, in active development) the gap became unavoidable:
+Agnosticism over codec allows us to use binary packets holding both compressed audio and pose data together.
 
-- Existing standards assume **single-author timelines** (one creator authors the spatial scene over time, then ships it). LASA targets **many sources, each authoring its own piece in parallel, fanning into a mixer**.
-- Existing standards assume **reliable, ordered transport** (file container, broadcast contribution link, fragmented MP4). LASA targets **UDP and MOQ datagrams**, where loss and reorder are normal.
-- Existing standards encode **time implicitly** by accumulating frame durations from a stream start. LASA carries an **absolute sender-side sample timestamp on every packet**, so a packet is parseable atomically.
+MoQ's own identifier structure overlaps to some degree with LASA's allowing us to push some of LASA's own 
+structure up into the transport layer, removing redundency and increasing efficiency.
 
-LASA is not a replacement for any of the standards below. It fills a niche they were not designed for.
+**Atomic Audio**
 
-## How LASA fits in the landscape
+LASA is opinionated about audio format. Object-based audio at 48kHz is sent in Opus encoded 5ms frames. 
+These are `atomic` in that each 5ms frame can also carry full `x, y, z, yaw, pitch, roll` pose data. 
+Each audio frame can thus carry with it the time-varying data required by a renderer to spatialise it correctly. 
+This removes issues of synchronisation and extra positional latency due to interpolation offsets.
 
-| Format | Role | Authoring model | Transport assumed | Open? |
-|---|---|---|---|---|
-| **BW64 + ADM** (ITU-R BS.2076) | Mastering file | Single creator, offline | File | Yes |
-| **S-ADM** (ITU-R BS.2125) | Broadcast contribution | Single creator, live | Reliable, ordered (SDI, ST 2110, AES67) | Yes |
-| **IAMF / Eclipsa** (AOMedia) | Consumer delivery | Renderer-authored from Mix Presentation | Container (fMP4) | Yes |
-| **Dolby Atmos** | Mastering + delivery | Single creator, offline | Licensed pipelines | No |
-| **MPEG-H 3D Audio** | Broadcast bitstream | Single producer, live | Broadcast multiplex | Patent-encumbered |
-| **LASA** | **Live source-to-mixer hop** | **Many sources, each authoring its own piece, in parallel** | **Lossy (UDP / MOQ datagrams)** | **Yes** |
+Audio is sent in MoQ datagram tracks whose characteristics are lossy and low latency (a bit UDP like).
 
-A few quick notes on the alignment:
+To add greater resilience, LASA allows for error correction with the addition of full bandwith redundant audio data.
+The offset, as from that the size of loss this can mask, is adjustable at the cost of additional latency. 
+ie we can mask a 20ms outage if you will accept 20ms of additional latency.
 
-- **ADM provides the vocabulary.** LASA borrows ADM's concepts directly — `position`, `attitude`, `gain`, `diffusion`, `directivity` — flattened from ADM's nested authoring hierarchy (which is useful at file time but is overhead at frame time) into a per-source struct on the wire.
-- **S-ADM is the closest existing answer to "ADM but live"**, but it's event-stream-shaped (here is what changed at time T) which assumes ordered, reliable delivery. LASA is state-replication-shaped (here is what is true right now), which is loss-tolerant.
-- **IAMF/Eclipsa is complementary, not competing.** A cloud mixer using LASA internally would naturally emit IAMF/Eclipsa **at egress** when delivering finished mixes to playback clients. LASA is the "ingress and internal hop" format; IAMF is the "egress to consumer" format. The mixer is the IAMF author at that boundary.
+**Presence**
 
-## Non-goals
+Like a game engine, LASA, optionally, provides a feed of the pose of all other clients connected to a Space. 
 
-LASA explicitly does **not**:
+**Distributed State**
 
-- Replace IAMF or Atmos for consumer delivery — different problem.
-- Define a transport. LASA bytes ride inside UDP datagrams, MOQ objects, or any other datagram-shaped envelope. Transport-layer concerns (congestion, encryption, NAT) are out of scope.
-- Carry slow / persistent / structured state. Names, capabilities, attributes, room geometry, permissions — these belong on a separate reliable plane.
-- Define session setup or capability negotiation. No SDP-equivalent.
-- Define mixing or rendering algorithms. LASA describes only the wire bytes; how a mixer interprets diffusion, directivity, attenuation, etc., is its own concern.
-- Provide ordering or reliability guarantees. Receivers must tolerate loss, reorder, and duplication by design.
+All other state in LASA, apart from the audio and pose data, is managed through a distributed key-value store.
+This is a centralised in-memory, pub-sub, real-time database with sequential consistancy.
 
-## Documents
+State change operations are carried in a MoQ reliable stream track allowing the state store to provide good consistency guarantees.
+Keys are utf-8 strings, values are binary data.
 
-- [`lasa.md`](lasa.md) — the spec itself.
-- [`plan/todo.md`](plan/todo.md) — what's done, what's needed for a real v1, and open design questions.
+LASA has a `base profile` which uses the `lasa.` key prefix namspace to distribute necessay parameters and attributes through the system, 
+but the state store can be extended carry any desired data.
 
-## How to engage
+LASA's `base profile` synchronises things like rendering chacteristics, such as gain or directivity, per user muting and permissions information, 
+and display data about users.
 
-This is early. The most useful contributions right now are:
+## Spec
 
-1. Reading the spec critically and reporting under-specified or contradictory corners.
-2. Sketching how LASA would or wouldn't fit a real use case you have — gaps in the design are easier to see from outside.
-3. Once a reference implementation exists, porting it to another language and reporting where the spec wasn't sufficient.
+LASA is defined in two spec documents in this repo:
 
-Nothing about LASA is set in stone before v1 is declared stable.
+- [**`lasa-core.md`**](lasa-core.md)  Identifiers, tracks
+  and namespaces, connection and auth, audio packet formats,
+  presence, and the state machinery with its wire encoding.
+- [**`lasa-base-profile.md`**](lasa-base-profile.md) — The base lasa state namespace covering roles,
+  permissions, channels, moderation, and key lifetimes.
 
+There are also JSON Schema documents in `./schemata` defining the data objects LASA uses:
+
+- [connection](schemata/connection.schema.json)
+- [entity](schemata/entity.schema.json)
+- [ticket](schemata/ticket.schema.json)
+- [pose](schemata/pose.schema.json)
+- [setup](schemata/setup.schema.json)
+
+
+## Go reference implementation
+
+This repo also contains a Go reference implementation of the LASA protocol.
+
+The sibling repo https://github.com/panaudia/panaudia-lasa contains a full, LASA media server, Panaudia LASA, also MIT licensed.
+
+## Tickets
+
+In `tickets` you will find sample code for creating and validating the JWT based tickets that LASA uses.
+
+## TypeScript Client
+
+There is a TypeScript, WebTransport client in `typescript`

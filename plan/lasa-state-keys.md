@@ -70,6 +70,10 @@ Write access below is stated per role as defined in `roles.md`;
 
 Allowed values: `true` 
 
+*(Superseded 2026-08-13, id-capabilities: the marker's value is the
+OWNING CLIENT ID, not `true` — ownership readable wherever the entity
+is; `lasa-base-profile.md` §6.)*
+
 set and clear by the server only in response to connection 
 
 Signifies the presence of this Entity in the Space.
@@ -314,7 +318,8 @@ If a source and sink have more than one channel between them and if any is not m
 Allowed values: Number min: 0 max: 3.0
 
 Set/clear by `producer` to adjust the gain of a whole channel.
-Absence means no override.
+Absence means no override. *(Superseded: absence = 1.0, the identity
+— profile §§4, 6; "no override" is the attenuation rule.)*
 
 If a source and sink have more than one channel between them, the highest gain value is used.
 

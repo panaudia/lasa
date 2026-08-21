@@ -12,6 +12,7 @@ package presence
 
 import (
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/panaudia/lasa/wire"
@@ -34,6 +35,13 @@ type Sender func(group uint64, payload []byte)
 // chunkBytes bounds one presence datagram's payload.
 const chunkBytes = 1150
 
+// maxRoster is the u16 index space of the presence format (§7): one
+// generation can index at most 65 536 entities. Entities beyond the cap
+// simply do not appear on the track — legal ("which entities appear is
+// space policy") and graceful, where a silent uint16 wrap would alias
+// indexes and put poses on the wrong entities.
+const maxRoster = 1 << 16
+
 // Author consumes the Collector's sampled roster and authors the
 // presence track — subscriber #1 of the entry-level pubsub (design §6:
 // the track machinery as a subscriber adapter; Author.Tick satisfies
@@ -52,7 +60,17 @@ type Author struct {
 	last    map[string]Entry
 	lastKF  time.Time
 	started bool
+
+	// dropped counts chunks lost to encode failures. Every id here
+	// came through admission's grammar validation, so a nonzero value
+	// is an invariant violation — surface it in embedder stats; the
+	// library itself stays log-free by design.
+	dropped atomic.Uint64
 }
+
+// DroppedChunks reports how many presence chunks were lost to encode
+// failures — nonzero means a bug upstream, never normal operation.
+func (a *Author) DroppedChunks() uint64 { return a.dropped.Load() }
 
 // NewAuthor creates an author emitting keyframes at least every
 // kfInterval (plus immediately on membership change and new
@@ -95,6 +113,9 @@ func (a *Author) Tick(now time.Time, entries []Entry) {
 	if nSenders == 0 {
 		return
 	}
+	if len(entries) > maxRoster {
+		entries = entries[:maxRoster]
+	}
 
 	byID := make(map[string]Entry, len(entries))
 	for _, e := range entries {
@@ -135,19 +156,24 @@ func (a *Author) Tick(now time.Time, entries []Entry) {
 func (a *Author) sendKeyframes(byID map[string]Entry) {
 	kf := wire.PresenceKeyframe{Gen: a.gen}
 	first := 0
-	var size int
+	// Every chunk pays the header: flags + gen + first.
+	const kfHeader = 1 + 1 + 2
+	size := kfHeader
 	flush := func(next int) {
 		kf.First = uint16(first)
 		if buf, err := wire.AppendPresenceKeyframe(nil, &kf); err == nil {
 			a.broadcast(buf)
+		} else {
+			a.dropped.Add(1)
 		}
 		kf.Records = kf.Records[:0]
 		first = next
-		size = 0
+		size = kfHeader
 	}
 	for i, id := range a.roster {
 		e := byID[id]
-		recSize := 2 + 1 + len(id) + wire.PoseSize + 1
+		// kflags + id-len + id + pose + loudness.
+		recSize := 1 + 1 + len(id) + wire.PoseSize + 1
 		if size+recSize > chunkBytes && len(kf.Records) > 0 {
 			flush(i)
 		}
@@ -169,20 +195,27 @@ func (a *Author) sendDeltas(byID map[string]Entry) {
 		}
 		if buf, err := wire.AppendPresenceDelta(nil, &d); err == nil {
 			a.broadcast(buf)
+		} else {
+			a.dropped.Add(1)
 		}
 		d.Records = d.Records[:0]
 	}
+	// Header: flags + gen; record: index + pose + loudness. Checked
+	// BEFORE appending, so the bound is a true upper bound on the
+	// emitted datagram (the keyframe path's rule).
+	const deltaHeader = 1 + 1
+	const deltaRecSize = 2 + wire.PoseSize + 1
 	for i, id := range a.roster {
 		e := byID[id]
 		if e == a.last[id] {
 			continue
 		}
+		if deltaHeader+(len(d.Records)+1)*deltaRecSize > chunkBytes {
+			flush()
+		}
 		d.Records = append(d.Records, wire.DeltaRecord{
 			Index: uint16(i), Pose: e.Pose, Loudness: e.Loudness,
 		})
-		if 2+len(d.Records)*(2+wire.PoseSize+1) > chunkBytes {
-			flush()
-		}
 	}
 	flush()
 }

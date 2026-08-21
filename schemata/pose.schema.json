@@ -34,13 +34,19 @@
             ],
             "properties": {
                 "yaw": {
-                    "type": "number"
+                    "type": "number",
+                    "minimum": -3.14159265358979,
+                    "maximum": 3.14159265358979
                 },
                 "pitch": {
-                    "type": "number"
+                    "type": "number",
+                    "minimum": -3.14159265358979,
+                    "maximum": 3.14159265358979
                 },
                 "roll": {
-                    "type": "number"
+                    "type": "number",
+                    "minimum": -3.14159265358979,
+                    "maximum": 3.14159265358979
                 }
             }
         }

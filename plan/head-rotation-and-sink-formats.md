@@ -3,7 +3,9 @@
 *Opened 2026-07-24. **Deferred 2026-07-27**: the whole head-rotation
 question is postponed as a future piece of work so a full lasa2 draft
 can be pulled together. v1 ships the initially planned sink menu —
-**`binaural`, `ambi2`, `ambi3`, all mandatory to implement** — with no
+**`binaural`, `ambi2`, `ambi3`, all mandatory to implement** *(since
+superseded 2026-08-21: `binaural`+`ambi2` MUST, `ambi3` SHOULD at
+internal render order ≥ 3 — core §3)* — with no
 bilateral formats and no correction sidecar. Everything below is
 preserved as the trade space for that future phase; the listening
 tests and the rotation-loop profiling (`next-steps.md` item 1) are the

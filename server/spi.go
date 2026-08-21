@@ -16,7 +16,12 @@ type Backend interface {
 
 	// EntityJoined is called once per admitted entity; the returned
 	// handler receives that entity's ingress for the life of the
-	// connection. An error tears the connection down.
+	// connection. An error tears the connection down. The backend
+	// MUST register the entity with the server's presence collector
+	// (Presence().Register) before returning — the base profile's
+	// "all entities appear on the presence track" (§7) rides on it,
+	// and only the backend holds the loudness callback and pose feed
+	// the slot needs. Removal at departure is shell-enforced.
 	EntityJoined(clientID string, e connect.ResolvedEntity) (EntityHandler, error)
 
 	// EntityLeft is called at departure, after the engine sweep was

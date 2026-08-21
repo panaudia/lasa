@@ -1,19 +1,12 @@
 # LASA Core
 
+The LASA Core contains definition of the audio and data tracks used by LASA 
+and how they are carried in MoQ.
 
-// TODO
-
-*Draft 2 — 2026-07-27. Supersedes `lasa2.md`. Companion document:
-`lasa-base-profile.md`. Design rationale for every decision here is
-recorded in `plan/`.*
+This includes the definition the low-level functioning of LASA's distributed state system, 
+but not the semantics of any of the state, that can be found in the companion document `lasa-base-profile.md`
 
 ## 1. Introduction
-
-LASA is a protocol for live spatial audio over Media over QUIC (MoQ).
-It is written in the context of the Open Media Alliance's
-Eclipsa/IETF work and MPEG-I, and is different from both in having a
-deliberately narrower scope: live, low-latency, head-tracked spatial
-audio for shared virtual spaces.
 
 A LASA **Space** is a server-hosted virtual acoustic environment.
 **Clients** connect to a Space, publish audio and pose for one or more
@@ -29,7 +22,7 @@ audio format families:
 There are no speaker-layout formats other than binaural. LASA is
 opinionated about codec: **Opus at 48 kHz in 5 ms frames**, and
 nothing else. (At 5 ms Opus is CELT-only; the trade was priced and
-accepted — see `plan/opus-frame-size.md`.)// TODO
+accepted — see `plan/opus-frame-size.md`.)
 
 LASA also provides game-engine-style semantics for synchronising
 distributed data: a small key/value **state store** with server-
@@ -48,13 +41,18 @@ per-subscriber and not meaningfully cacheable.
 
 This document specifies the **core**: media tracks and the state
 *machinery*. The core is content-blind — it attaches no meaning to
-any state key and functions with an empty vocabulary. The single key
-prefix **`lasa.`** (with the trailing dot) is reserved for the
-first-party **base profile**, a normative companion specification
-(`lasa-base-profile.md`) defining the standard key vocabulary, role
-definitions, and key lifetime semantics. All other keys are
-application space. There is no profile discovery mechanism and no
-registry: clients know what they are connecting to out-of-band.
+any state key; the split between the two documents is machinery
+versus vocabulary, not optionality. The single key prefix **`lasa.`**
+(with the trailing dot) belongs to the first-party **base profile**,
+a normative companion specification (`lasa-base-profile.md`)
+defining the standard key vocabulary, role definitions, and key
+lifetime semantics. **The base profile is not optional**: every
+conforming Space implements it, which is why the entity schema the
+core references (§4.2) carries base-profile fields. All other keys
+are application space, layered on top of the base profile, never
+instead of it. There is no profile discovery mechanism and no
+registry: clients know what application vocabulary they are
+connecting to out-of-band.
 
 ### 1.2 Conformance language
 
@@ -108,8 +106,16 @@ New formats are additive — new names that break nothing.
 | `(space, "client", c, "sink")` | `state` | space | stream |
 | `(space, "presence")` | `presence` | space | datagram |
 
-A conforming Space MUST offer all three sink formats — `binaural`,
-`ambi2`, `ambi3` — for every entity.// TODO
+A conforming Space MUST offer `binaural` and `ambi2` for every
+entity, and SHOULD offer `ambi3` too when its internal render order
+is 3 or higher (the internal order may exceed the highest wire
+format). Formats carry no authorization dimension: a connection that
+may subscribe an entity's sink may take it in any offered format. A
+profile MAY define entities that have no sink at all — the base
+profile's head-frame entities are source-only (base profile §6,
+`frame`) — and a subscription to a sink that does not exist is
+refused; the offering obligation applies to entities that have
+sinks.
 
 ### 3.1 Subscribe and announce authorization
 
@@ -130,18 +136,21 @@ outside the connection's binding MUST be rejected.
 
 > *Note (privacy): subscribing to an entity's sink is hearing the
 > space through that entity's ears. The base profile grants this
-> beyond the owner to the `admin` role; deployments should surface
-> this fact to users.*
+> beyond the owner to the `admin` and `producer` roles; deployments
+> should surface this fact to users.*
 
 ### 3.2 Sink lifecycle
 
-Sink formats are independent tracks and **subscription is the only
-lifecycle signal**: the server renders and encodes an entity's sink
-only while at least one subscription to any of its formats is active;
-a new subscription joins at live (no history); concurrent formats are
-permitted (each pays its own encode); switching formats is
-subscribe-new-then-unsubscribe-old, with both flowing during the
-overlap. Any limits on concurrency are deployment policy.
+Sink formats are independent tracks and, while the entity lives,
+**subscription is the only lifecycle signal**: the server renders and
+encodes an entity's sink only while at least one subscription to any
+of its formats is active; a new subscription joins at live (no
+history); concurrent formats are permitted (each pays its own
+encode); switching formats is subscribe-new-then-unsubscribe-old,
+with both flowing during the overlap. Any limits on concurrency are
+deployment policy. When an entity departs, its sink tracks end with
+it: the server closes any live subscription to them (MoQ
+SUBSCRIBE_DONE / track ended).
 
 > *Note (capability is exercised, not declared): an entity never
 > declares whether it acts as a source or a sink — the Connection
@@ -201,11 +210,23 @@ instantiation mechanism, not a collision: no id may appear twice
 within the setups list; no id may appear twice within the entities
 list; and no ad-hoc entity id may equal any ticket-defined id,
 instantiated or not — ad-hoc entities cannot shadow signed
-definitions. Any violation rejects the connection.
+definitions. Any violation rejects the connection. A duplicate id
+within the ticket's own entities block is an issuer error and rejects
+the ticket itself (`0x1A5A01`).
 
 **Zero-entity connections are legal** (`entities: []`) — the
 observer/console pattern: such a connection may subscribe `presence`,
 its own state sink, and whatever sinks its grants allow.
+
+An entity definition (`schemata/entity.schema.json`) carries a
+required `id` and a required human-readable `name` (non-unique,
+surfaced to other participants — base profile §6); its remaining
+fields are optional. The schema deliberately spans both layers:
+`id`, `attrs`, `initial-pose` and the two declarations below are
+core; `name`, `priority`, `heard-in`/`hears`, `frame`, `dof` and
+`render` are base-profile vocabulary whose semantics live in the
+profile (§6) — carried in the one schema because the base profile is
+not optional (§1.1).
 
 **Quality and redundancy declarations.** An entity definition MAY
 carry two declarations about its **audio path** — the stream it
@@ -256,16 +277,31 @@ A Ticket is a signed JWT (`schemata/ticket.schema.json`). EdDSA
 - the signature, against the Space's configured issuer key(s);
 - **`aud` equals the space id** — what stops a ticket minted for one
   space being replayed into another;
-- `exp`/`nbf` when present. A ticket without `exp` never expires;
-  issuers should set it deliberately, as it is the only bound on
-  reuse (§4.5).
+- `exp`/`nbf`/`iat` when present. A ticket without `exp` never
+  expires; issuers should set it deliberately, as it is the only
+  bound on reuse (§4.5).
+
+**The claims object is a deliberately limited, constrained profile
+of JWT**, held to the normative schema exactly: `iss`, `aud` and
+`panaudia` are required; `exp`, `nbf` and `iat` are optional but
+enforced when present; `aud` MUST be the single-string form, never
+the JWT array form. Any other member — registered JWT claims
+included (`sub`, `azp`, `jti`) — rejects the ticket: tickets are
+grants of capability, not descriptions of identity, and admitting a
+claim the server does not consume would imply it has some function.
+`jti` in particular is deliberately absent — session exclusivity
+rides the `client_id` capability (§4.4), so a per-token id would
+have nothing to govern.
 
 The `panaudia` claim is required and carries `client_id` (MUST equal
 the config's `client_id`), optional `roles`, optional `permissions`
 (three arrays of key prefixes: `set`, `clear`, `read`), and optional
 `entities`. Role *names* are profile vocabulary; the core carries
-them opaquely. The connection's effective state access is the union
-of its roles' rules and its ticket's permissions (§6.4).
+them opaquely — the ticket schema holds them to the identifier
+grammar (§2) only, and whether an unknown name is refused is profile
+policy, applied at admission (base profile §2). The connection's
+effective state access is the union of its roles' rules and its
+ticket's permissions (§6.4).
 
 ### 4.4 Space mode, capabilities, and admission
 
@@ -297,10 +333,13 @@ between different capabilities refuse the newcomer.**
   The returning principal never waits on the server detecting the old
   session's death. (Two devices sharing one ticket therefore do not
   get two sessions; the multi-device story is more tickets.)
-- **Ticketed, entity id collides with a different client's live
-  entity:** reject (`0x1A5A04`). Two distinct capabilities naming one
-  id is an issuer coordination error; neither outranks the other, and
-  a bystander is never severed on entity grounds.
+- **Ticketed, entity id collides with a live entity the connection
+  does not own** — another client's, or one no live connection
+  accounts for: reject (`0x1A5A04`). Two distinct capabilities naming
+  one id is an issuer coordination error; neither outranks the other,
+  and a bystander is never severed on entity grounds. An
+  unattributable live marker is an embedder/issuer anomaly — refusal
+  surfaces it rather than masking it by silent claim.
 - **Unticketed:** any collision — client id or entity id — resolves
   newest-wins: the incumbent connection is superseded wholesale.
   Without title, reclaim and hijack are indistinguishable by
@@ -321,8 +360,11 @@ point; the core defines no wire surface for the records. The base
 profile materializes them as state keys — `lasa.client.{id}` and the
 entity existence markers, whose values name their owning client
 (base profile §§3, 6) — adjudicated atomically with the admission
-writes, capacity included, so every admission refusal issues from
-one place.
+writes, capacity included: collision and capacity refusals issue
+from that one point. The moderation-block refusal (`0x1A5A06`) is
+the exception — it runs earlier, after ticket verification and
+before adjudication (base profile §5), so a blocked id's reconnect
+can never reach supersession.
 
 ### 4.5 Reconnect
 
@@ -346,13 +388,20 @@ a LASA range distinct from MoQ's own session-terminate codes.
 Correctness MUST ride the code alone; reason phrases are advisory,
 may be truncated or dropped, and MUST NOT require parsing.
 
+> *Note (known defect, temporary): the reference WebTransport stack
+> currently fails to surface the close code and reason to browser
+> clients — the session ends as a generic connection loss
+> (`plan/wt-close-code-defect.md`). Raw QUIC delivers both
+> correctly. The normative requirement stands; this note goes when
+> the defect does.*
+
 | Code | Meaning |
 |---|---|
-| `0x1A5A00` | malformed / schema-invalid Connection Config |
-| `0x1A5A01` | invalid ticket (signature, expired, not yet valid, wrong audience) |
+| `0x1A5A00` | invalid Connection Config: schema violation, a §4.2 rule violation, or the setup parameter missing entirely; also the fallback when admission fails with no more specific code |
+| `0x1A5A01` | invalid ticket (signature, expired, not yet valid, wrong audience, duplicate entity definitions, unknown role name where the profile refuses them) — or no ticket presented to a ticketed space |
 | `0x1A5A02` | `client_id` does not match the ticket claim |
 | `0x1A5A03` | *retired 2026-08-13* (was: unticketed id collision — unticketed collisions now supersede, §4.4); MUST NOT be reused |
-| `0x1A5A04` | entity id collides with another client's live entity (ticketed; §4.4) |
+| `0x1A5A04` | entity id collides with a live entity the connection does not own (ticketed; §4.4) |
 | `0x1A5A05` | ad-hoc entities not permitted for this ticket |
 | `0x1A5A06` | blocked |
 | `0x1A5A07` | space at capacity |
@@ -395,7 +444,10 @@ Reserved bits MUST be zero; a receiver MUST discard packets with
 unknown bits set (they are not this format). The redundancy-offset
 bits 3–5 are meaningful only when bit 2 is set and are MBZ when it
 is clear; a packet with bit 2 clear and a nonzero offset falls under
-the same discard rule.
+the same discard rule. The inverse — bit 2 set with a zero offset —
+is **malformed** rather than unknown: it is this format but
+self-contradictory (offsets are 1–7, and the redundant copy would be
+unlocatable); a receiver discards the packet.
 
 **Pose encoding — 18 bytes**, byte-for-byte identical wherever a pose
 appears on the wire: `x, y, z` as IEEE-754 f32 (metres; x forward, y
@@ -454,11 +506,17 @@ reconnecting client republishes the same track tuple — but the id
 space does not carry over. A reconnect is a **new track instance**
 and group-ids restart at 0. (Id arithmetic is time arithmetic only
 within a contiguous run; stitching across a wall-clock hole would
-silently break the redundancy offset and freshness logic.) All
-per-track receiver state — latest-wins ids, jitter buffers,
-redundancy history, ts anchors — is scoped to the (MoQ session,
-track) instance and resets with it. Nothing in the packet format
-signals a reconnect; the new MoQ session is the signal.
+silently break the redundancy offset and freshness logic.) The
+restarting instance is the **publisher's**: for uplinks that is the
+client's connection — reconnect means a new instance and ids from 0
+— while for sink tracks it is the render itself (§3.2), whose ids
+start at 0 when rendering starts and run continuously across
+subscriber churn, so a subscription joining a live render attaches
+at the current id, not 0. All per-track receiver state —
+latest-wins ids, jitter buffers, redundancy history, ts anchors — is
+scoped to the (MoQ session, track) instance and resets with it
+either way. Nothing in the packet format signals a reconnect; the
+new MoQ session is the signal.
 
 ### 5.3 Layouts
 
@@ -475,7 +533,9 @@ group-id; there is no other header.
 - **`mono-object`**: one 5 ms mono Opus frame (when audio present) at
   48 kHz, plus optional pose. Pose-only packets are silence; audio-
   only packets are pose decimation — both sender choices with zero
-  format cost.
+  format cost. A packet carrying neither (flags `0x00`) is likewise
+  legal: it advances the sequence and says nothing else, keeping the
+  no-gaps rule of §5.1 unconditional.
 - **`binaural`**: one 5 ms stereo Opus frame — the binaural rendering
   of the space as heard by the entity.
 - **`ambi2` / `ambi3`**: the audio section is exactly one Opus
@@ -486,21 +546,6 @@ group-id; there is no other header.
   9 channels as 9 uncoupled mono streams, `ambi3` = 16 channels as 16
   uncoupled mono streams (`coupled = 0`, identity mapping), ACN
   order, SN3D normalisation.
-
-### 5.4 The pose fast path (non-normative)
-
-// TODO
-
-> *Note: pose SHOULD bypass the audio jitter buffer. Audio is a
-> stream where late packets are worth waiting for; pose is a
-> latest-wins sampled signal where a late sample is worthless. The
-> two payloads of one datagram take different paths: audio → jitter
-> buffer → mixer tick; pose → applied on arrival, guarded only by the
-> group-id latest-wins rule. Combined with assembly-time pose
-> sampling this removes an estimated 15–25 ms from the rotation loop
-> with no wire change. See `plan/audio-packet-structure.md` §8 for
-> the full three-stage rotation-latency picture and its measurement
-> method.*
 
 ## 6. State
 
@@ -533,9 +578,13 @@ carry no seq upstream; the server assigns one on acceptance. **The
 only acknowledgement is the echo**: an accepted op comes back, with
 its seq, on the client's own state sink subscription. All rejections
 are silent — no echo means it didn't happen. The silent-drop causes:
-the write is denied by role/permission rules; the key matches none
-of the connection's write grants; the value exceeds 64 KiB; the
-group exceeds the op-count cap (§6.1).
+the op fails to parse; the write is denied by role/permission rules;
+the key matches none of the connection's write grants; the key is
+malformed (the §2 grammar or the 512-byte cap); the value exceeds
+64 KiB; the group exceeds the op-count cap (§6.1); or the op arrives
+after the connection's disconnect sweep has begun — a superseded
+connection's in-flight writes are dropped, never applied on the
+successor's behalf.
 
 Two shapes are *accepted yet never echoed* — delivery filtering, not
 rejection: a write under a `set`/`clear` grant without the matching
@@ -569,7 +618,9 @@ subscription filters, **access rules match exact-key-or-dot-extended
 prefix**: a scope `p` matches key `k` iff `k = p′` or `k` begins with
 `p′ + "."`, where `p′` is `p` without any trailing dot. (Plain-prefix
 matching here would either hide a bare key from its own dotted scope
-or leak sibling ids.)
+or leak sibling ids.) The **empty scope is the universal grant**: it
+matches every key — mirroring the subscription side, where the empty
+prefix subscribes to everything (§6.3).
 
 A scope may contain **`*` segments**, each matching exactly one
 identifier segment — `lasa.entity.*.dof` matches
@@ -684,12 +735,14 @@ if cursor present:
 ```
 
 The set-hash input is exactly the concatenated
-`[len varint][prefix bytes]` entries. Varints in the canonical form
-MUST be **minimal** — a non-minimal length encoding would hash
-differently on each side — and a server MUST reject a subscribe
-whose prefix set is not canonical (duplicated, unsorted, or
-non-minimal). A fresh client sends flags = 0
-and omits the cursor block.
+`[len varint][prefix bytes]` entries. Every varint in this parameter
+MUST be **minimal**: in the canonical form because a non-minimal
+length encoding would hash differently on each side, and in the
+cursor block for uniformity — one rule covers the whole KVP. A
+server MUST reject a subscribe whose prefix set is not canonical
+(duplicated, unsorted, or non-minimal) or whose cursor seq varint is
+non-minimal. A fresh client sends flags = 0 and omits the cursor
+block.
 
 **Messages**, one per MoQ object, `[type u8][body]`, QUIC varints
 throughout:
@@ -719,10 +772,10 @@ periodic frontiers) and **subgroup 1 carries the catch-up payload**
 ordering is guaranteed within each path — all the per-path frontier
 promise needs — and backpressure on a large snapshot cannot stall
 live ops. Object-ids increment monotonically within each subgroup.
-The source track is one group, one subgroup, ordered ops. If a MoQ
-stack's subgroup support is awkward, a single ordered stream carrying
-the same messages interleaved is conformant-equivalent; the client
-rules are unchanged.
+The source track is one group, one subgroup, ordered ops. This
+mapping is **normative**: the lane is identified by its subgroup id
+and clients MAY depend on that (the reference clients do). Subgroups
+are core MoQ; LASA defines no alternative mapping.
 
 ## 7. Presence
 
@@ -736,10 +789,10 @@ Two packet kinds; flags bit 0 = keyframe, other bits reserved-MBZ
 with the discard rule of §5.1:
 
 ```
-delta:     [flags][gen u8] [record]*
+delta:     [flags u8][gen u8] [record]*
            record  = [index u16][pose 18][loudness u8]
 
-keyframe:  [flags][gen u8] [first u16] [krecord]*
+keyframe:  [flags u8][gen u8] [first u16] [krecord]*
            krecord = [kflags u8][id-len u8][id utf8][pose 18][loudness u8]
 ```
 
@@ -752,10 +805,10 @@ connection time and membership changes bump the generation, so the
 roster always carries it and delta records stay unchanged.
 
 Records parse to the end of the datagram. Pose is the §5.1 encoding.
-**Loudness**: u8; 0 = digital full scale, each step −0.5 dB, 255 =
-≤ −127 dBFS / silence; it is the entity's source loudness post-gain,
-pre-attenuation (attenuation is per-listener and cannot appear in a
-shared feed).
+**Loudness**: u8; 0 = digital full scale, each step −0.5 dB down to
+254 = −127 dBFS; 255 = silence (below −127 dBFS); it is the entity's
+source loudness post-gain, pre-attenuation (attenuation is
+per-listener and cannot appear in a shared feed).
 
 - **Indexes are defined by keyframes**: entities listed in index
   order, so the mapping is implicit — position is the assignment. A

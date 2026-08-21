@@ -89,6 +89,7 @@ func (v *Verifier) Verify(raw string) (*Ticket, *Rejection) {
 		jwt.WithValidMethods([]string{"EdDSA"}),
 		jwt.WithTimeFunc(now),
 		jwt.WithAudience(v.SpaceID),
+		jwt.WithIssuedAt(), // iat is optional but enforced when present (§4.3)
 	).ParseWithClaims(raw, &claims, func(*jwt.Token) (any, error) {
 		return jwt.VerificationKeySet{Keys: keys}, nil
 	})
@@ -97,8 +98,9 @@ func (v *Verifier) Verify(raw string) (*Ticket, *Rejection) {
 	}
 
 	// The signature is good; now hold the claims object to the normative
-	// ticket schema (required fields, identifier grammars, role enum,
-	// permission prefix shapes).
+	// ticket schema (required fields, identifier grammars, permission
+	// prefix shapes; role names are grammar-checked only — the core
+	// carries them opaquely, vocabulary is profile policy).
 	if rej := v.validateClaimsSchema(raw); rej != nil {
 		return nil, rej
 	}

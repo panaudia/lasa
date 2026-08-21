@@ -265,18 +265,30 @@ func (e *Engine) closeConn(c *Conn, scopes []string) {
 	for i, k := range keys {
 		ops[i] = wire.Clear{Key: k}
 	}
-	e.applyGroup(ops)
+	// Chunked: a large sweep must not become an over-cap group on the
+	// wire. Shortest-key-first ordering puts the markers in the first
+	// chunk, so the ignore-when-absent rule covers readers mid-sweep.
+	e.applyChunked(ops)
 }
 
 // Write applies server-authored ops (profile consumer writes: existence
-// markers, moderation enforcement). No grant checks; caps still apply to
-// keep the log sound.
+// markers, moderation enforcement). No grant checks, but the
+// log-soundness caps are enforced: an invalid key or over-cap value is
+// an error — embedder misuse should be loud, not a silent client-style
+// drop — and a group larger than the op cap is applied as consecutive
+// chunks within one actor event, so delivery never sees an over-cap
+// group from any author.
 func (e *Engine) Write(msgs ...wire.StateMessage) error {
+	for _, m := range msgs {
+		if err := validateServerOps(m); err != nil {
+			return err
+		}
+	}
 	return e.do(func() {
 		for _, m := range msgs {
 			switch v := m.(type) {
 			case wire.Group:
-				e.applyGroup(v.Ops)
+				e.applyChunked(v.Ops)
 			case wire.Set, wire.Clear:
 				e.applyGroup([]wire.StateMessage{m})
 			default:
@@ -284,6 +296,51 @@ func (e *Engine) Write(msgs ...wire.StateMessage) error {
 			}
 		}
 	})
+}
+
+// validateServerOps holds server-authored ops to the same key and value
+// bounds as client writes (spec §2/§9).
+func validateServerOps(m wire.StateMessage) error {
+	check := func(op wire.StateMessage) error {
+		switch v := op.(type) {
+		case wire.Set:
+			if !ident.ValidKey(v.Key) {
+				return fmt.Errorf("state: invalid key %q", v.Key)
+			}
+			if len(v.Value) > wire.MaxValueLen {
+				return fmt.Errorf("state: value for %q exceeds %d bytes", v.Key, wire.MaxValueLen)
+			}
+		case wire.Clear:
+			if !ident.ValidKey(v.Key) {
+				return fmt.Errorf("state: invalid key %q", v.Key)
+			}
+		}
+		return nil
+	}
+	if g, ok := m.(wire.Group); ok {
+		for _, op := range g.Ops {
+			if err := check(op); err != nil {
+				return err
+			}
+		}
+		return nil
+	}
+	return check(m)
+}
+
+// applyChunked applies ops as consecutive groups of at most GroupOpCap.
+// The group cap exists because an over-large group is a forced-resync
+// primitive against every subscriber's delivery window — which is true
+// regardless of author, so server-side groups (sweeps, admissions)
+// chunk rather than exempt themselves. Atomicity is the caller's actor
+// event, not the group: consecutive seqs and no attach cut inside are
+// preserved across the chunks. Actor-owned.
+func (e *Engine) applyChunked(ops []wire.StateMessage) {
+	for len(ops) > e.cfg.GroupOpCap {
+		e.applyGroup(ops[:e.cfg.GroupOpCap])
+		ops = ops[e.cfg.GroupOpCap:]
+	}
+	e.applyGroup(ops)
 }
 
 // applyClient enforces the silent-drop causes for one client message.

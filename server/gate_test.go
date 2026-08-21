@@ -33,6 +33,11 @@ func TestGateSemantics(t *testing.T) {
 	if rej := g.check(&connect.Resolved{ClientID: "c1", Roles: []string{"admin"}}); rej != nil {
 		t.Fatal("admin must bypass client blocks (§5)")
 	}
+	// Blanket immunity (§5): admin bypasses role blocks too, even on
+	// its co-held roles.
+	if rej := g.check(&connect.Resolved{ClientID: "c9", Roles: []string{"admin", "noisy"}}); rej != nil {
+		t.Fatal("admin must bypass blocks on its other roles (§5)")
+	}
 	if rej := g.check(&connect.Resolved{ClientID: "c2", Roles: []string{"noisy"}}); rej == nil {
 		t.Fatal("blocked role must be rejected")
 	}
@@ -99,6 +104,26 @@ func TestE2EBlockedAtConnect(t *testing.T) {
 		t.Fatalf("expired block must admit: %v", err)
 	}
 	_ = c.Close()
+}
+
+// The §2 role default is real at the gate: a connection presenting no
+// roles is exactly audience, so role.blocked.audience refuses it at
+// connect and severs it while live.
+func TestE2ERoleBlockedAudienceDefault(t *testing.T) {
+	sp := startSpace(t, nil)
+	_ = dial(t, sp, nil) // ClientID c1, entity e1 — no roles: audience
+	waitCond(t, "admission", func() bool {
+		_, ok := engineGet(sp.srv, "lasa.client.c1")
+		return ok
+	})
+	block(t, sp, "lasa.space.role.blocked.audience", "0")
+	waitCond(t, "default-role session severed", func() bool {
+		_, ok := engineGet(sp.srv, "lasa.client.c1")
+		return !ok
+	})
+	if err := dialErr(t, sp, "c2"); err == nil {
+		t.Fatal("audience block must refuse default-role connections")
+	}
 }
 
 // Blocked while live: the block severs the session through the normal

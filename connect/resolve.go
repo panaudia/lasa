@@ -19,8 +19,8 @@ type ResolvedEntity struct {
 // Resolved is the outcome of admission resolution: the connection's
 // identity, its admitted entities, and the ticket-derived access inputs.
 // Roles are carried opaquely as the ticket presented them; defaulting an
-// absent/empty roles claim to "audience" is base-profile behaviour and
-// happens in the profile layer.
+// absent/empty roles claim to "audience" is base-profile behaviour,
+// applied at admission (base.DefaultRoles in the server shell).
 type Resolved struct {
 	ClientID    string
 	Ticketed    bool

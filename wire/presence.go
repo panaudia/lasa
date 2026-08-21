@@ -9,15 +9,17 @@ import (
 )
 
 // Loudness is the presence loudness byte (lasa-core.md §7): 0 is digital
-// full scale, each step -0.5 dB, 255 is ≤ -127 dBFS / silence. It is the
-// entity's source loudness post-gain, pre-attenuation.
+// full scale, each step -0.5 dB down to 254 = -127 dBFS; 255 is the
+// silence sentinel (below -127 dBFS). It is the entity's source loudness
+// post-gain, pre-attenuation.
 type Loudness uint8
 
-// LoudnessSilent is the silence sentinel (≤ -127 dBFS).
+// LoudnessSilent is the silence sentinel (below -127 dBFS).
 const LoudnessSilent Loudness = 255
 
-// LoudnessFromDBFS quantizes a dBFS value. Values above 0 dBFS clamp to 0;
-// values at or below -127 dBFS clamp to LoudnessSilent.
+// LoudnessFromDBFS quantizes a dBFS value. Values above 0 dBFS clamp to
+// 0; values that quantize past 254 (below -127 dBFS) become
+// LoudnessSilent.
 func LoudnessFromDBFS(db float64) Loudness {
 	q := math.Round(db * -2)
 	if q < 0 {
@@ -30,7 +32,7 @@ func LoudnessFromDBFS(db float64) Loudness {
 }
 
 // DBFS returns the loudness in dBFS. For LoudnessSilent the value is
-// -inf (silence), matching its "≤ -127 dBFS" meaning.
+// -inf (silence), matching its below--127-dBFS meaning.
 func (l Loudness) DBFS() float64 {
 	if l == LoudnessSilent {
 		return math.Inf(-1)

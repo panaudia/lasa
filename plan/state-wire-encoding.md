@@ -19,6 +19,10 @@ Config parameter) containing:
 - the cursor `(epoch, seq)` — absent for a fresh client;
 - the 32-byte set-hash of the earned set — absent for a fresh client.
 
+*(As pinned in `lasa-core.md` §6.7, the KVP begins with a flags byte
+— bit 0 = cursor present — ahead of these fields, and every varint in
+the parameter must be minimal.)*
+
 Changing the set is MoQ unsubscribe + re-subscribe, natively. The
 delta/snapshot answer is **in-band** (the `begin` message below), not
 a SUBSCRIBE_OK parameter — response extension params are poorly
@@ -62,7 +66,8 @@ subgroup and bounds what one writer can wedge into every subscriber's
 feed. An oversized write is dropped silently — the same no-echo
 signal as a role-rejected op (`lasa2.md`'s no-error-channel rule).
 Keys are already bounded in practice by the key grammar; no separate
-key cap is pinned.
+key cap is pinned. *(Superseded: keys are capped at 512 bytes —
+review resolutions 2026-07-27, spec §2/§9.)*
 
 ## MoQ mapping: live and catch-up are subgroups
 

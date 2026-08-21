@@ -136,10 +136,17 @@ func TestTicketVerifySchemaEnforced(t *testing.T) {
 		claims jwt.MapClaims
 	}{
 		{"missing panaudia", jwt.MapClaims{"iss": "i", "iat": now, "aud": "space1"}},
-		{"missing iat", jwt.MapClaims{"iss": "i", "aud": "space1", "panaudia": map[string]any{"client_id": "c1"}}},
 		{"missing client_id", jwt.MapClaims{"iss": "i", "iat": now, "aud": "space1", "panaudia": map[string]any{}}},
-		{"unknown role", jwt.MapClaims{"iss": "i", "iat": now, "aud": "space1",
-			"panaudia": map[string]any{"client_id": "c1", "roles": []string{"emperor"}}}},
+		// The claims object is a closed set (§4.3): registered JWT
+		// claims outside the profile — jti, sub, azp — reject.
+		{"registered claim jti", jwt.MapClaims{"iss": "i", "iat": now, "aud": "space1", "jti": "t1",
+			"panaudia": map[string]any{"client_id": "c1"}}},
+		{"registered claim sub", jwt.MapClaims{"iss": "i", "iat": now, "aud": "space1", "sub": "someone",
+			"panaudia": map[string]any{"client_id": "c1"}}},
+		// Role names are grammar-checked only; vocabulary is profile
+		// policy (base.ValidRoles), enforced at admission, not here.
+		{"role name violates grammar", jwt.MapClaims{"iss": "i", "iat": now, "aud": "space1",
+			"panaudia": map[string]any{"client_id": "c1", "roles": []string{"EMPEROR"}}}},
 		{"bad permission prefix", jwt.MapClaims{"iss": "i", "iat": now, "aud": "space1",
 			"panaudia": map[string]any{"client_id": "c1", "permissions": map[string]any{"read": []string{"BAD"}}}}},
 	}
@@ -154,6 +161,24 @@ func TestTicketVerifySchemaEnforced(t *testing.T) {
 			}
 		})
 	}
+
+	// iat is optional (§4.3): a ticket without it verifies.
+	t.Run("iat optional", func(t *testing.T) {
+		claims := jwt.MapClaims{"iss": "i", "aud": "space1",
+			"panaudia": map[string]any{"client_id": "c1"}}
+		if _, rej := verifier(pub).Verify(sign(claims)); rej != nil {
+			t.Fatalf("ticket without iat must verify: %v", rej.Reason)
+		}
+	})
+	// ...but enforced when present: a future-dated iat rejects.
+	t.Run("future iat rejects", func(t *testing.T) {
+		future := float64(testClock().Add(time.Hour).Unix())
+		claims := jwt.MapClaims{"iss": "i", "iat": future, "aud": "space1",
+			"panaudia": map[string]any{"client_id": "c1"}}
+		if _, rej := verifier(pub).Verify(sign(claims)); rej == nil {
+			t.Fatal("future-dated iat must reject")
+		}
+	})
 }
 
 // Non-EdDSA algorithms are rejected outright, including alg=none.

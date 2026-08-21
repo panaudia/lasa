@@ -1,6 +1,7 @@
 package base
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/panaudia/lasa/connect"
@@ -164,5 +165,17 @@ func TestClientClaimGroup(t *testing.T) {
 		if len(s.Key) >= len(prefix) && s.Key[:len(prefix)] == prefix {
 			t.Fatalf("claim key %s under participant-facing prefix %s", s.Key, prefix)
 		}
+	}
+}
+
+// E1 (spec-audit 2026-08-21): the store's value cap applies to
+// admission writes — an oversized config attr rejects at group build.
+func TestAdmissionGroupValueCap(t *testing.T) {
+	big := strings.Repeat("x", wire.MaxValueLen)
+	_, err := AdmissionGroup("c1", &connect.ResolvedEntity{
+		Entity: connect.Entity{ID: "e1", Name: "n", Attrs: map[string]any{"blob": big}},
+	})
+	if err == nil {
+		t.Error("oversized attr value must reject the admission group")
 	}
 }

@@ -1,0 +1,19 @@
+{
+  "name": "@panaudia/lasa-client",
+  "version": "0.0.1",
+  "private": true,
+  "description": "LASA TypeScript client SDK (sibling of the old-panaudia SDK; see PROVENANCE.md)",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --port 5199 --strictPort",
+    "typecheck": "tsc --noEmit",
+    "test:interop": "playwright test"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.49.0",
+    "@types/node": "^26.1.2",
+    "typescript": "^5.7.0",
+    "vite": "^6.0.0",
+    "vitest": "^4.1.10"
+  }
+}

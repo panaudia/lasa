@@ -35,6 +35,12 @@ subscribe to **any** entity's sink tracks ("listening through e's
 ears"). No other role has this; every connection may subscribe to its
 own entities' sinks regardless of role.
 
+*(Superseded: producer holds the same any-sink grant as part of the
+mixing desk, and admin's copy derives from the union — see
+`lasa-base-profile.md` §2. The 2026-08-04 ambi-format role gate that
+briefly accompanied it was removed 2026-08-21: sink formats carry no
+authorization dimension, core §3.)*
+
 ### audience
 
 **write**

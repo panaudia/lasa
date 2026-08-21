@@ -84,3 +84,59 @@ func TestDropEntityEndsTracks(t *testing.T) {
 		t.Fatalf("returning entity did not get a fresh render: starts = %d", b.starts)
 	}
 }
+
+// E4 (spec-audit 2026-08-21): a failed Accept releases ensure's hold —
+// a render with no subscriber is stopped, not leaked (§3.2). A
+// concurrent pending hold or a live publisher keeps it alive.
+func TestReleaseStopsUnpublishedRender(t *testing.T) {
+	b := &countingBackend{}
+	m := newSinkManager(b, nil)
+
+	// Lone subscriber, Accept fails: render stops and the slot is free.
+	r, err := m.ensure("e1", "binaural")
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.release(r)
+	if b.stops != 1 {
+		t.Fatalf("unpublished render not stopped: stops = %d", b.stops)
+	}
+	if _, ok := m.renders[sinkKey{"e1", "binaural"}]; ok {
+		t.Fatal("released render still registered")
+	}
+
+	// Two holds on one render: one release must not kill the other's.
+	r1, _ := m.ensure("e2", "binaural")
+	r2, _ := m.ensure("e2", "binaural")
+	if r1 != r2 {
+		t.Fatal("same (entity, format) must share a render")
+	}
+	m.release(r1)
+	if b.stops != 1 {
+		t.Fatal("release killed a render another subscriber holds")
+	}
+	m.addPublisher(r2, &fakePub{}, nil)
+
+	// A live publisher keeps the render across a later failed Accept.
+	r3, _ := m.ensure("e2", "binaural")
+	m.release(r3)
+	if b.stops != 1 {
+		t.Fatal("release killed a render with a live publisher")
+	}
+
+	// dropConn respects a pending hold: publisher leaves while another
+	// subscriber is mid-Accept — the render survives until that hold
+	// resolves.
+	cs := &connSession{}
+	r4, _ := m.ensure("e3", "binaural")
+	m.addPublisher(r4, &fakePub{}, cs)
+	r5, _ := m.ensure("e3", "binaural")
+	m.dropConn(cs)
+	if b.stops != 1 {
+		t.Fatal("dropConn killed a render with a pending hold")
+	}
+	m.release(r5)
+	if b.stops != 2 {
+		t.Fatalf("last hold released: render must stop, stops = %d", b.stops)
+	}
+}

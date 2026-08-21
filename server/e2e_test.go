@@ -200,35 +200,32 @@ func TestE2ESinkSubscription(t *testing.T) {
 	}
 }
 
-// Sink format policy (2026-08-04 rules): ambi formats are offered up
-// to AmbiOrder and need the role-derived AmbiFormats grant.
-func TestE2ESinkFormatPolicy(t *testing.T) {
-	sp := startSpace(t, func(cfg *Config) {
-		cfg.AmbiOrder = 2
-		cfg.AmbiFormats = func([]string) bool { return true } // grant all: order policy under test
-	})
+// Sink format offering: binaural and ambi2 always (default order 2);
+// ambi3 only when the space renders third order. Formats carry no role
+// gate — whoever may subscribe the sink may take any offered format.
+func TestE2ESinkFormatOffering(t *testing.T) {
+	sp := startSpace(t, nil) // default AmbiOrder 2
 	c := dial(t, sp, nil)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	if _, err := c.SubscribeSink(ctx, "e1", "ambi2", func(uint64, []byte) {}); err != nil {
-		t.Fatalf("offered ambi order must be subscribable with the grant: %v", err)
+		t.Fatalf("ambi2 is mandatory and grant-free: %v", err)
 	}
 	if _, err := c.SubscribeSink(ctx, "e1", "ambi3", func(uint64, []byte) {}); err == nil {
 		t.Fatal("ambi3 must be rejected when the offered order is 2")
 	}
 }
 
-// Without the AmbiFormats grant even the owner is limited to binaural.
-func TestE2EAmbiNeedsGrant(t *testing.T) {
-	sp := startSpace(t, func(cfg *Config) { cfg.AmbiOrder = 3 }) // no AmbiFormats hook: never granted
+func TestE2EAmbi3AtOrder3(t *testing.T) {
+	sp := startSpace(t, func(cfg *Config) { cfg.AmbiOrder = 3 })
 	c := dial(t, sp, nil)
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
-	if _, err := c.SubscribeSink(ctx, "e1", "ambi3", func(uint64, []byte) {}); err == nil {
-		t.Fatal("ambi without the grant must be rejected")
+	if _, err := c.SubscribeSink(ctx, "e1", "ambi3", func(uint64, []byte) {}); err != nil {
+		t.Fatalf("ambi3 must be offered at order 3: %v", err)
 	}
 	if _, err := c.SubscribeSink(ctx, "e1", "binaural", func(uint64, []byte) {}); err != nil {
-		t.Fatalf("binaural must stay grant-free: %v", err)
+		t.Fatalf("binaural must always be offered: %v", err)
 	}
 }
 
@@ -333,26 +330,17 @@ func TestE2EPresence(t *testing.T) {
 		}
 	}()
 
-	var mu sync.Mutex
-	var seen *wire.KeyframeRecord
-	if _, err := c.SubscribePresence(ctx, func(msg any) {
-		if kf, ok := msg.(*wire.PresenceKeyframe); ok {
-			for i := range kf.Records {
-				if kf.Records[i].ID == "e1" {
-					mu.Lock()
-					r := kf.Records[i]
-					seen = &r
-					mu.Unlock()
-				}
-			}
-		}
-	}); err != nil {
+	roster, _, err := c.SubscribeRoster(ctx)
+	if err != nil {
 		t.Fatal(err)
 	}
-	waitCond(t, "keyframe with e1 at X=7", func() bool {
-		mu.Lock()
-		defer mu.Unlock()
-		return seen != nil && math.Abs(float64(seen.Pose.X-7)) < 0.01
+	waitCond(t, "roster shows e1 at X=7", func() bool {
+		for _, e := range roster.Snapshot() {
+			if e.ID == "e1" && math.Abs(float64(e.Pose.X-7)) < 0.01 {
+				return true
+			}
+		}
+		return false
 	})
 }
 

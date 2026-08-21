@@ -135,8 +135,8 @@ registered grants, never in the transport:
 its ops get consecutive seqs and no attach cut can land inside it. The
 disconnect sweep is itself a group, so sweep atomicity follows. Group
 size is capped at a server constant **well below the log window** —
-the spec caps key and value sizes but not group op-count (errata
-candidate), and an over-window group would evict every cursor in the
+the spec now caps ops-per-group too (§6.1/§9, reference default 64 —
+the errata landed), and an over-window group would evict every cursor in the
 space at once, including freshly attached ones: a one-writer universal
 forced-resync. Over-cap groups are silently dropped whole, like any
 other invalid write.

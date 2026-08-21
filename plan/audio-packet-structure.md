@@ -351,7 +351,9 @@ closed for v1 by deferral of the head-rotation question.*
 question is **deferred as future work** (see the deferral note in
 `head-rotation-and-sink-formats.md`). v1 ships the initially planned
 menu: **`binaural`, `ambi2`, `ambi3`, all three mandatory to
-implement**. Bilateral formats and the correction sidecar remain
+implement**. *(Superseded 2026-08-21: the offering is now
+`binaural`+`ambi2` MUST, `ambi3` SHOULD at internal render order ≥ 3
+— core §3.)* Bilateral formats and the correction sidecar remain
 recorded candidates for a future rotation-latency phase; adding them
 later is additive under format-in-name.
 

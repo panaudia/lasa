@@ -58,10 +58,10 @@ func TestRulesFor(t *testing.T) {
 			},
 		},
 		{
-			name: "moderator: any entity's dof (set only) and the moderation keys",
+			name: "moderator: any entity's dof and the moderation keys",
 			res:  resolved(true, []string{RoleModerator}, "e1"),
 			checks: []check{
-				{"lasa.entity.e2.dof", true, false, true}, // any entity; §2 grants no clear
+				{"lasa.entity.e2.dof", true, true, true}, // any entity; clear reverts to default
 				{"lasa.space.entity.muted.e2", true, true, true},
 				{"lasa.space.client.blocked.c9", true, true, true},
 				{"lasa.entity.e2.render.gain", false, false, true}, // producer's, not moderator's
@@ -93,7 +93,7 @@ func TestRulesFor(t *testing.T) {
 			res:  resolved(true, []string{RoleAdmin}, "e1"),
 			checks: []check{
 				{"lasa.entity.e1.attrs.color", true, true, true},
-				{"lasa.entity.e2.dof", true, false, true},
+				{"lasa.entity.e2.dof", true, true, true},
 				{"lasa.space.entity.muted.e2", true, true, true},
 				{"lasa.entity.e2.render.gain", true, true, true},
 				{"lasa.space.channel.gain.main", true, true, true},
@@ -196,10 +196,34 @@ func TestSinkAll(t *testing.T) {
 		if got := SinkAll(c.roles); got != c.want {
 			t.Errorf("SinkAll(%v) = %v, want %v", c.roles, got, c.want)
 		}
-		// AmbiPermitted travels with SinkAll in the base profile (§2):
-		// same admin/producer constituency.
-		if got := AmbiPermitted(c.roles); got != c.want {
-			t.Errorf("AmbiPermitted(%v) = %v, want %v", c.roles, got, c.want)
+	}
+}
+
+func TestDefaultRoles(t *testing.T) {
+	if got := DefaultRoles(nil); len(got) != 1 || got[0] != RoleAudience {
+		t.Errorf("DefaultRoles(nil) = %v, want [audience]", got)
+	}
+	if got := DefaultRoles([]string{}); len(got) != 1 || got[0] != RoleAudience {
+		t.Errorf("DefaultRoles([]) = %v, want [audience]", got)
+	}
+	if got := DefaultRoles([]string{RoleAdmin}); len(got) != 1 || got[0] != RoleAdmin {
+		t.Errorf("DefaultRoles([admin]) = %v, want [admin] unchanged", got)
+	}
+}
+
+func TestValidRoles(t *testing.T) {
+	cases := []struct {
+		roles []string
+		want  bool
+	}{
+		{nil, true},
+		{[]string{RoleAdmin, RolePresenter, RoleModerator, RoleProducer, RoleAudience}, true},
+		{[]string{"stagehand"}, false},
+		{[]string{RoleAudience, "stagehand"}, false},
+	}
+	for _, c := range cases {
+		if got := ValidRoles(c.roles); got != c.want {
+			t.Errorf("ValidRoles(%v) = %v, want %v", c.roles, got, c.want)
 		}
 	}
 }

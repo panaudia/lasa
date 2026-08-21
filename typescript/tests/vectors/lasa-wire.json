@@ -1,0 +1,160 @@
+[
+  {
+    "name": "pose-basic",
+    "hex": "0000c03f000010c00000003ebe28a1ebff7f",
+    "meta": {
+      "X": 1.5,
+      "Y": -2.25,
+      "Z": 0.125,
+      "Yaw": 1,
+      "Pitch": -0.5,
+      "Roll": 3.2
+    }
+  },
+  {
+    "name": "pose-clamp",
+    "hex": "000000000000000000000000018000000000",
+    "meta": {
+      "X": 0,
+      "Y": 0,
+      "Z": 0,
+      "Yaw": -4,
+      "Pitch": 0,
+      "Roll": 0
+    }
+  },
+  {
+    "name": "mono-pose-only",
+    "hex": "010000c03f000010c00000003ebe28a1ebff7f",
+    "meta": null
+  },
+  {
+    "name": "mono-audio-only",
+    "hex": "02f801020304",
+    "meta": null
+  },
+  {
+    "name": "mono-both",
+    "hex": "030000c03f000010c00000003ebe28a1ebff7ff801020304",
+    "meta": null
+  },
+  {
+    "name": "mono-redundancy",
+    "hex": "1f0000c03f000010c00000003ebe28a1ebff7f0500f801020304f80908",
+    "meta": {
+      "offset": 3
+    }
+  },
+  {
+    "name": "sink-plain",
+    "hex": "00f801020304",
+    "meta": null
+  },
+  {
+    "name": "sink-ts",
+    "hex": "4040aa7deaf71e0600f801020304",
+    "meta": {
+      "ts": "1722900000123456"
+    }
+  },
+  {
+    "name": "sink-ts-redundancy",
+    "hex": "4c40aa7deaf71e06000500f801020304f80908",
+    "meta": {
+      "offset": 1,
+      "ts": "1722900000123456"
+    }
+  },
+  {
+    "name": "presence-keyframe",
+    "hex": "010702000005616c6963650000c03f000010c00000003ebe28a1ebff7f2e0107616e67656c2d31000000000000003f00000000000000000000ff",
+    "meta": {
+      "first": 2,
+      "gen": 7,
+      "ids": [
+        "alice",
+        "angel-1"
+      ]
+    }
+  },
+  {
+    "name": "presence-delta",
+    "hex": "000702000000c03f000010c00000003ebe28a1ebff7f2e0300000000000000003f00000000000000000000ff",
+    "meta": {
+      "gen": 7
+    }
+  },
+  {
+    "name": "state-set-up",
+    "hex": "01136c6173612e656e746974792e65312e6d7574650e7b226d75746564223a747275657d",
+    "meta": {
+      "key": "lasa.entity.e1.mute"
+    }
+  },
+  {
+    "name": "state-set-down",
+    "hex": "01136c6173612e656e746974792e65312e6d7574650e7b226d75746564223a747275657d5092",
+    "meta": {
+      "key": "lasa.entity.e1.mute",
+      "seq": 4242
+    }
+  },
+  {
+    "name": "state-clear-up",
+    "hex": "02136c6173612e656e746974792e65312e6d757465",
+    "meta": {
+      "key": "lasa.entity.e1.mute"
+    }
+  },
+  {
+    "name": "state-clear-down",
+    "hex": "02136c6173612e656e746974792e65312e6d7574655093",
+    "meta": {
+      "key": "lasa.entity.e1.mute",
+      "seq": 4243
+    }
+  },
+  {
+    "name": "state-group-down",
+    "hex": "030201136c6173612e656e746974792e65312e6d7574650e7b226d75746564223a747275657d509202136c6173612e656e746974792e65312e6d7574655093",
+    "meta": {
+      "count": 2
+    }
+  },
+  {
+    "name": "state-frontier",
+    "hex": "04deadbeef010203048001869f",
+    "meta": {
+      "epoch": "deadbeef01020304",
+      "seq": 99999
+    }
+  },
+  {
+    "name": "state-begin-delta",
+    "hex": "0501",
+    "meta": null
+  },
+  {
+    "name": "state-begin-snapshot",
+    "hex": "0502",
+    "meta": null
+  },
+  {
+    "name": "subparams-fresh",
+    "hex": "00020c6c6173612e656e746974792e0b6c6173612e73706163652e",
+    "meta": {
+      "prefixes": [
+        "lasa.entity.",
+        "lasa.space."
+      ]
+    }
+  },
+  {
+    "name": "subparams-cursor",
+    "hex": "01020c6c6173612e656e746974792e0b6c6173612e73706163652edeadbeef010203045092f12e7d991e15d263f6af6087ee7f2fcf44e64185e4438a404074617b9a0ff415",
+    "meta": {
+      "seq": 4242,
+      "sethash": "f12e7d991e15d263f6af6087ee7f2fcf44e64185e4438a404074617b9a0ff415"
+    }
+  }
+]

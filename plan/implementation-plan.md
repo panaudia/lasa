@@ -36,7 +36,7 @@ see. Packages, in dependency order (each depends only on earlier ones):
 |---|---|
 | `ident` | identifier & key grammars, namespace tuple types, track-name constants, subscribe/announce authorization matrix |
 | `wire` | §5/§7/§6.7 byte layouts: flags, 18-byte pose, mono-object / binaural / ambi packets, redundancy framing, sink ts anchoring, state messages (direction-aware parsers), subscribe-KVP + set-hash, presence delta/keyframe |
-| `connect` | Connection Config parse/validate against `schemata/`, ticket JWT verification (Ed25519, `aud`/`exp`/`nbf`), entities/setups resolution, permission-set derivation, error codes `0x1A5A00–07` |
+| `connect` | Connection Config parse/validate against `schemata/`, ticket JWT verification (Ed25519, `aud`/`exp`/`nbf`), entities/setups resolution, permission-set derivation, error codes `0x1A5A00–08` |
 | `state` | the engine: server store + `clientstore` (client half). Design in `state-engine-design.md` |
 | `profile/base` | base-profile vocabulary as code: typed key builders/parsers, role→rule expansion, value validation, defaults |
 | `server` | transport shell: CLIENT_SETUP auth, track routing, subscription-driven sink lifecycle, state subgroup mapping, presence loop. Self-contained behind an SPI |

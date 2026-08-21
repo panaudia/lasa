@@ -21,6 +21,19 @@ const (
 	RoleAudience  = "audience"
 )
 
+// DefaultRoles materializes the §2 default: a connection with no
+// roles — an absent or empty ticket claim, or any unticketed
+// connection — is granted exactly audience. Applied at admission so
+// that role-targeted moderation (lasa.space.role.blocked.audience)
+// reaches the connections it names; without it the default role
+// would exist only as implicit state rules, invisible to the gate.
+func DefaultRoles(roles []string) []string {
+	if len(roles) == 0 {
+		return []string{RoleAudience}
+	}
+	return roles
+}
+
 // AdHocPermitted reports the §2 connect-time admission privilege: an
 // admin or presenter ticket may carry ad-hoc entity definitions directly
 // in the Connection Config (lasa-core.md §4.2).
@@ -34,12 +47,21 @@ func SinkAll(roles []string) bool {
 	return hasRole(roles, RoleAdmin) || hasRole(roles, RoleProducer)
 }
 
-// AmbiPermitted reports the §2 ambisonic-formats grant: admin and
-// producer — the recording/broadcast/console constituency — may
-// subscribe the ambi sink formats (decided 2026-08-04). Audience gets
-// binaural only.
-func AmbiPermitted(roles []string) bool {
-	return hasRole(roles, RoleAdmin) || hasRole(roles, RoleProducer)
+// ValidRoles reports whether every role name is base-profile
+// vocabulary (§2). The core carries role names opaquely — the ticket
+// schema constrains them to the identifier grammar only — so this
+// profile is where unknown names are refused: a ticket bearing one
+// rejects the connection at admission as an invalid ticket
+// (lasa-core.md §4.6, 0x1A5A01).
+func ValidRoles(roles []string) bool {
+	for _, r := range roles {
+		switch r {
+		case RoleAdmin, RolePresenter, RoleModerator, RoleProducer, RoleAudience:
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // RulesFor expands a resolved connection's roles into its effective
@@ -69,8 +91,7 @@ func RulesFor(res *connect.Resolved) state.Rules {
 	r.Read = append(r.Read, "lasa.entity", "lasa.space")
 
 	if hasRole(res.Roles, RoleModerator) || hasRole(res.Roles, RoleAdmin) {
-		r.Set = append(r.Set, DofKey("*")) // set only: dof has no clear in §2
-		mod := []string{"lasa.space.entity.muted", "lasa.space.client.blocked"}
+		mod := []string{DofKey("*"), "lasa.space.entity.muted", "lasa.space.client.blocked"}
 		r.Set = append(r.Set, mod...)
 		r.Clear = append(r.Clear, mod...)
 	}

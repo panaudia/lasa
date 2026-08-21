@@ -93,6 +93,11 @@ func (cs *connSession) onClientSetup(params moqtransport.KVPList) error {
 	if rej != nil {
 		return setupRejection(rej)
 	}
+	// Role names are core-opaque; the profile's vocabulary check runs
+	// here, at admission (base profile §2).
+	if ticket != nil && cs.srv.cfg.ValidRoles != nil && !cs.srv.cfg.ValidRoles(ticket.Roles) {
+		return moqtransport.SetupRejection{Code: uint64(wire.ErrCodeInvalidTicket), Reason: "unknown role"}
+	}
 	adHoc := false
 	if ticket != nil && cs.srv.cfg.AdHocPermitted != nil {
 		adHoc = cs.srv.cfg.AdHocPermitted(ticket.Roles)
@@ -101,6 +106,10 @@ func (cs *connSession) onClientSetup(params moqtransport.KVPList) error {
 	if rej != nil {
 		return setupRejection(rej)
 	}
+	// Materialize the base-profile role default (base profile §2): no
+	// roles means exactly audience — before the gate, so role-targeted
+	// moderation reaches default-role connections too.
+	res.Roles = base.DefaultRoles(res.Roles)
 	res.Transport = cs.transport
 	// Moderation gate BEFORE adjudication (design §7, the KickGate
 	// lesson): a blocked id's reconnect can never reach supersession.
@@ -150,11 +159,10 @@ func (cs *connSession) onClientSetup(params moqtransport.KVPList) error {
 	cs.econn = econn
 	cs.superseded = superseded
 	cs.binding = &ident.Binding{
-		Space:       cs.srv.cfg.SpaceID,
-		Client:      res.ClientID,
-		Entities:    entities,
-		SinkAll:     cs.srv.cfg.SinkAll != nil && cs.srv.cfg.SinkAll(res.Roles),
-		AmbiFormats: cs.srv.cfg.AmbiFormats != nil && cs.srv.cfg.AmbiFormats(res.Roles),
+		Space:    cs.srv.cfg.SpaceID,
+		Client:   res.ClientID,
+		Entities: entities,
+		SinkAll:  cs.srv.cfg.SinkAll != nil && cs.srv.cfg.SinkAll(res.Roles),
 	}
 	return nil
 }
@@ -339,6 +347,9 @@ func (cs *connSession) handleSubscribe(w *moqtransport.SubscribeResponseWriter, 
 			return
 		}
 		if err := w.Accept(); err != nil {
+			// The subscribe never completed: release ensure's hold so
+			// a render with no subscriber is stopped, not leaked.
+			cs.srv.sinks.release(r)
 			return
 		}
 		cs.srv.sinks.addPublisher(r, w, cs)

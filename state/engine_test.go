@@ -1,6 +1,7 @@
 package state
 
 import (
+	"fmt"
 	"context"
 	"errors"
 	"io"
@@ -512,5 +513,67 @@ func TestGCFlushMovesWatermark(t *testing.T) {
 	_ = e.do(func() { wm = e.watermark })
 	if wm != clearSeq {
 		t.Fatalf("watermark = %d, want %d", wm, clearSeq)
+	}
+}
+
+// E1 (spec-audit 2026-08-21): server-authored writes obey the same caps
+// as client writes — violations error loudly, and over-cap groups
+// (Write and the disconnect sweep alike) are applied as consecutive
+// chunks, so delivery never sees an over-cap group from any author.
+func TestServerWriteCaps(t *testing.T) {
+	e, _ := newTestEngine(t, func(c *Config) { c.GroupOpCap = 2 })
+	if err := e.Write(wire.Set{Key: "big", Value: make([]byte, wire.MaxValueLen+1)}); err == nil {
+		t.Error("oversized server value must error")
+	}
+	if err := e.Write(wire.Set{Key: "Bad Key", Value: []byte("x")}); err == nil {
+		t.Error("invalid server key must error")
+	}
+	if e.Head() != 0 {
+		t.Fatal("rejected writes must not land")
+	}
+
+	reader, _ := e.Register("r", Rules{Read: []string{""}})
+	s, _ := e.Attach(reader, []string{""}, nil)
+	drainCatchUp(t, s)
+
+	if err := e.Write(wire.Group{Ops: []wire.StateMessage{
+		set("a.1", "1"), set("a.2", "2"), set("a.3", "3"), set("a.4", "4"), set("a.5", "5"),
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	assertChunked(t, s, 5, 2)
+}
+
+func TestSweepChunked(t *testing.T) {
+	e, _ := newTestEngine(t, func(c *Config) { c.GroupOpCap = 2 })
+	w, _ := e.Register("w", allAccess)
+	for i := 0; i < 5; i++ {
+		_ = w.Write(set(fmt.Sprintf("lasa.entity.e1.attrs.k%d", i), "v"))
+	}
+	reader, _ := e.Register("r", Rules{Read: []string{""}})
+	s, _ := e.Attach(reader, []string{""}, nil)
+	drainCatchUp(t, s)
+
+	_ = w.Close("lasa.entity.e1")
+	assertChunked(t, s, 5, 2)
+}
+
+// assertChunked reads live messages until n ops arrive, failing on any
+// group over the cap.
+func assertChunked(t *testing.T, s *Subscription, n, capN int) {
+	t.Helper()
+	total := 0
+	for total < n {
+		switch m := liveNext(t, s).(type) {
+		case wire.Group:
+			if len(m.Ops) > capN {
+				t.Fatalf("delivered group of %d ops exceeds cap %d", len(m.Ops), capN)
+			}
+			total += len(m.Ops)
+		case wire.Set, wire.Clear:
+			total++
+		default:
+			t.Fatalf("unexpected live message %#v", m)
+		}
 	}
 }

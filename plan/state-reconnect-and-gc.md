@@ -289,6 +289,11 @@ dataflow term of art for "you will see nothing below X", and avoids
 overloading both "watermark" — already the tombstone gate here, and the
 term Flink/Beam use for this very concept — and the generic "boundary".)*
 
+*(Errata: the pinned semantics are INCLUSIVE — "nothing further **at
+or below** X", so a cursor equal to the cut is fully caught up;
+`lasa-core.md` §6.5 and the implementation agree. The exclusive
+wording below is historical.)*
+
 Every catch-up response — delta or snapshot — **closes with an explicit
 frontier message**: "you will receive nothing further below X" for the
 subscription. X is the **cut cursor**, transmitted explicitly, **never

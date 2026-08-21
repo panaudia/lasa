@@ -6,11 +6,15 @@ vocabulary, the role definitions, and key lifetime semantics — the
 three are one unit: a vocabulary without who-may-write is unusable,
 and roles without a vocabulary have nothing to protect.*
 
-A deployment claims this profile by name, out-of-band; there is no
-wire discovery. The core functions with an empty vocabulary — nothing
-below is required for the sync machinery to operate, and the
-reference server's mixer reading these keys is a profile consumer,
-not core machinery.
+This profile is **not optional**: every conforming Space implements
+it (`lasa-core.md` §1.1) — the split between core and profile is
+machinery versus vocabulary, not a feature boundary. The sync
+machinery itself stays content-blind: nothing below is required for
+it to operate, and the reference server's mixer reading these keys
+is a profile consumer, not core machinery. Entity definitions carry
+this profile's fields directly in the core's entity schema
+(`schemata/entity.schema.json`: `name`, `priority`,
+`heard-in`/`hears`, `frame`, `dof`, `render` — core §4.2).
 
 ## 1. Value conventions
 
@@ -31,7 +35,12 @@ String value. Attribute names follow the core identifier grammar.
 Five roles: `admin`, `presenter`, `moderator`, `producer`,
 `audience`. Ticketed connections carry roles in the ticket
 (`panaudia.roles`); a ticket with an absent or empty roles claim, and
-every unticketed connection, is granted exactly **`audience`**.
+every unticketed connection, is granted exactly **`audience`**. The
+core carries role names opaquely (`lasa-core.md` §4.3); this profile
+is where they gain meaning — and where unknown ones are refused: a
+ticket bearing a role name outside this vocabulary rejects the
+connection at admission as an invalid ticket (`lasa-core.md` §4.6,
+`0x1A5A01`).
 
 Roles are **compact aliases** over the core's prefix-rule machinery
 (`lasa-core.md` §6.4): a connection's effective access is the union
@@ -39,7 +48,11 @@ of its roles' rules below and its ticket's explicit `permissions`
 grants. Permissions may target any prefix, including `lasa.` — a
 fine-grained grant without the full role. Value-level rules (allowed
 values, §5's admin protection) apply regardless of how write access
-was obtained. Scopes below match exact-key-or-dot-extended-prefix,
+was obtained, and they are consumer-side: the store is profile-blind
+(`lasa-core.md` §6.1), so a write outside a key's documented values
+is accepted, echoed and delivered like any other — it simply has
+**no effect**: consumers ignore it and whatever value last took
+effect stands. Scopes below match exact-key-or-dot-extended-prefix,
 per the core; the any-entity grants expand to `*`-segment scopes
 (`lasa-core.md` §6.4).
 
@@ -69,7 +82,7 @@ Config (`lasa-core.md` §4.2).
 
 `audience`, plus write:
 
-- `lasa.entity.{entity-id}.dof` — set (any entity)
+- `lasa.entity.{entity-id}.dof` — set, clear (any entity)
 - `lasa.space.entity.muted.{entity-id}` — set, clear
 - `lasa.space.client.blocked.{client-id}` — set, clear
 
@@ -98,11 +111,9 @@ overrides, `clear` reverts to the documented default
 A producer may also subscribe to **any** entity's sink tracks
 ("listening through e's ears" — the privacy statement in
 `lasa-core.md` §3.1): monitoring what listeners hear is part of the
-desk. Producers (and admins, via the union) are additionally the
-only roles that may subscribe the **ambisonic sink formats**
-(`ambi2`/`ambi3` — recording, broadcast and external processing;
-pinned 2026-08-04): all other connections are limited to
-`binaural`, whatever formats the space offers.
+desk. Sink *formats* carry no role gate (`lasa-core.md` §3): any
+connection that may subscribe a sink may take it in any format the
+space offers.
 
 ### admin
 
@@ -199,10 +210,13 @@ profile consumer; at admission the check runs after ticket
 verification and before entity admission
 (`lasa-core.md` §4.6, code `0x1A5A06`).
 
-**Admin is unblockable:** `lasa.space.role.blocked.admin` is an
-invalid write (dropped like any other invalid value), and
-`client.blocked` entries are ignored for — and never terminate — a
-connection whose ticket bears `admin`. This guarantees in-protocol
+**Admin is unblockable:** a connection whose ticket bears `admin` is
+immune to every block — `client.blocked` entries and role blocks
+alike, including blocks naming its *other* roles — none refuses it
+at admission or terminates it live. Setting
+`lasa.space.role.blocked.admin` additionally has no effect at all —
+like any out-of-range value it is stored and delivered but ignored
+by every consumer (§2). This guarantees in-protocol
 recovery from any block state: an admin can always connect and clear.
 
 ## 6. Key vocabulary
@@ -225,8 +239,6 @@ recovery from any block state: an admin can always connect and clear.
 | `lasa.entity.{id}.render.directivity` | Number 0.0–1.0 | config; `producer` |
 | `lasa.entity.{id}.frame` | `"world"` \| `"head"` | config only |
 | `lasa.entity.{id}.dof` | 0 \| 3 \| 6 | config; `moderator` |
-| `lasa.entity.{id}.initial-pose.position.{x,y,z}` | Number | config only |
-| `lasa.entity.{id}.initial-pose.attitude.{yaw,pitch,roll}` | Number, ±π | config only |
 | `lasa.entity.{id}.mute.{other-id}` | `true` | owner |
 | `lasa.entity.{id}.solo.{other-id}` | `true` | owner |
 
@@ -316,15 +328,20 @@ ambisonic sink formats**, whose world-frame fields cannot carry a
 per-listener source; they render in `binaural` sinks only.
 
 **`dof`** — degrees of freedom: 6 (default) moves and turns freely;
-3 turns in place; 0 is fixed. **The space enforces dof at ingest**:
+3 turns in place; 0 is fixed. `clear` reverts to the default, 6.
+**The space enforces dof at ingest**:
 for dof 3 the position components of arriving poses are ignored; for
 dof 0 the whole pose is ignored and the entity's pose is its
 initial-pose. Presence reflects the enforced pose, never the sent
 one.
 
-**`initial-pose.*`** — the entity's pose at join (coordinate
-conventions per `lasa-core.md` §5.1). An entity's pose is its
-initial-pose until the first accepted packet pose supersedes it.
+**Initial pose** (config, not a state key) — an entity definition's
+`initial-pose` (`lasa-core.md` §4.2; coordinate conventions per
+§5.1) positions the entity at join: its pose is the initial-pose
+until the first accepted packet pose supersedes it, and remains so
+for `dof` 0. It is consumed at admission and never materialized into
+state — live position is presence's to carry, and a state copy would
+be stale the moment the entity moved.
 
 **`mute.{other}` / `solo.{other}`** — personal, connection-scoped
 preferences of the owning entity. Mute is **bidirectional** (pinned

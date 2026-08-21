@@ -44,3 +44,18 @@ func TestNewRejectsMixedMode(t *testing.T) {
 	}
 	s.Close()
 }
+
+// E10 (spec-audit 2026-08-21): a space id outside the §2 grammar fails
+// at construction — it could never match a schema-valid ticket aud, so
+// failing late would make every ticket silently unusable.
+func TestNewRejectsInvalidSpaceID(t *testing.T) {
+	cfg := Config{
+		SpaceID:         "My_Space",
+		Backend:         newStubBackend(),
+		RulesFor:        func(*connect.Resolved) state.Rules { return state.Rules{} },
+		AllowUnticketed: true,
+	}
+	if _, err := New(cfg); err == nil || !strings.Contains(err.Error(), "identifier") {
+		t.Fatalf("invalid space id must be a construction error, got %v", err)
+	}
+}

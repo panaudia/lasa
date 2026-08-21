@@ -160,3 +160,82 @@ func TestAuthorNoSendersNoWork(t *testing.T) {
 		t.Fatal("must not build a roster with no subscribers")
 	}
 }
+
+// E3 (spec-audit 2026-08-21): chunkBytes is a true upper bound on every
+// emitted datagram — keyframes and deltas, headers included — at a
+// roster size that used to overflow the delta path.
+func TestChunkBytesIsUpperBound(t *testing.T) {
+	a := NewAuthor(time.Minute)
+	var sizes []int
+	a.AddSender("sub", func(_ uint64, payload []byte) {
+		sizes = append(sizes, len(payload))
+		if _, err := wire.ParsePresence(payload); err != nil {
+			t.Fatalf("emitted packet unparseable: %v", err)
+		}
+	})
+
+	// 120 UUID-length ids: several keyframe chunks, and enough changed
+	// records to force multiple delta chunks.
+	entries := make([]Entry, 120)
+	for i := range entries {
+		entries[i] = Entry{
+			EntityID: fmt.Sprintf("aaaaaaaa-bbbb-cccc-dddd-eeeeeeee%04d", i),
+			Pose:     wire.Pose{X: float32(i)},
+		}
+	}
+	now := time.Unix(1_800_000_000, 0)
+	a.Tick(now, entries) // membership change → chunked keyframes
+
+	for i := range entries {
+		entries[i].Pose.Y = 1 // every record changes
+	}
+	a.Tick(now.Add(20*time.Millisecond), entries) // chunked deltas
+
+	if len(sizes) < 4 {
+		t.Fatalf("expected several chunks, got %d", len(sizes))
+	}
+	for i, s := range sizes {
+		if s > chunkBytes {
+			t.Errorf("packet %d is %d bytes, exceeds chunkBytes %d", i, s, chunkBytes)
+		}
+	}
+}
+
+// E6 (spec-audit 2026-08-21): encode failures are counted, not silent —
+// nonzero DroppedChunks means an invariant violation upstream (ids are
+// admission-validated before they reach the Author).
+func TestDroppedChunksCounter(t *testing.T) {
+	a := NewAuthor(time.Minute)
+	a.AddSender("sub", func(uint64, []byte) {})
+	now := time.Unix(1_800_000_000, 0)
+	a.Tick(now, []Entry{{EntityID: "INVALID ID"}}) // violates the grammar
+	if got := a.DroppedChunks(); got != 1 {
+		t.Fatalf("DroppedChunks = %d, want 1", got)
+	}
+	a.Tick(now.Add(time.Second), []Entry{{EntityID: "ok-id"}})
+	if got := a.DroppedChunks(); got != 1 {
+		t.Fatalf("valid roster must not bump the counter: %d", got)
+	}
+}
+
+// E7 (spec-audit 2026-08-21): the roster is capped at the format's u16
+// index space — excess entities are absent from presence (legal: which
+// entities appear is space policy) instead of wrapping indexes onto
+// other entities' records. The capped roster is stable across ticks.
+func TestRosterCappedAtU16(t *testing.T) {
+	a := NewAuthor(time.Minute)
+	a.AddSender("sub", func(uint64, []byte) {})
+	entries := make([]Entry, maxRoster+3)
+	for i := range entries {
+		entries[i] = Entry{EntityID: fmt.Sprintf("e%06d", i)}
+	}
+	now := time.Unix(1_800_000_000, 0)
+	a.Tick(now, entries)
+	if len(a.roster) != maxRoster {
+		t.Fatalf("roster = %d, want %d", len(a.roster), maxRoster)
+	}
+	a.Tick(now.Add(20*time.Millisecond), entries)
+	if a.gen != 0 {
+		t.Fatalf("capped roster must be stable, gen = %d", a.gen)
+	}
+}
