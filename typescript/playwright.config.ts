@@ -13,7 +13,7 @@ export default defineConfig({
       // With the real wildcard cert (dev.panaudia.com in /etc/hosts) no
       // flags are needed — the rig runs the production TLS shape. The
       // dev-mode flag remains only for the no-keys fallback, where the
-      // spike passes serverCertificateHashes instead.
+      // the interop page passes serverCertificateHashes instead.
       args: [
         '--webtransport-developer-mode',
         // The playout spec renders real audio through an AudioContext;
@@ -24,7 +24,7 @@ export default defineConfig({
   },
   webServer: {
     command: 'npm run dev',
-    url: 'http://127.0.0.1:5199/spike/',
+    url: 'http://127.0.0.1:5199/interop/',
     reuseExistingServer: true,
     timeout: 30_000,
   },

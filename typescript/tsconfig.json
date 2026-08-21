@@ -11,5 +11,5 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["src", "spike", "tests"]
+  "include": ["src", "interop", "tests"]
 }

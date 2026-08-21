@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import type { LatencyRunResult } from '../spike/latency';
+import type { LatencyRunResult } from '../interop/latency';
 
 // D3 step 5: the browser latency harness — mouth-to-ear onset and
 // sink-pose flip, both detected in the playout worklet's rendered
@@ -10,7 +10,7 @@ test('browser mouth-to-ear and sink-pose-flip latency', async ({ page }) => {
   page.on('console', (msg) => {
     if (msg.text().startsWith('[latency]')) console.log(msg.text());
   });
-  await page.goto('/spike/');
+  await page.goto('/interop/');
   await expect(page.locator('#log')).toContainText('crossOriginIsolated=true');
 
   const url = process.env['LASA_SPIKE_URL'] ?? 'https://127.0.0.1:44443/lasa';

@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import type { TicketedRunResult } from '../spike/ticketed';
+import type { TicketedRunResult } from '../interop/ticketed';
 import { mintTicket } from './mint-ticket';
 
 // Identity through the TS client, end-to-end in a real browser
@@ -12,8 +12,8 @@ test('ticketed identity: admission, refusals, supersession', async ({ page }) =>
   page.on('console', (msg) => {
     if (msg.text().startsWith('[ticketed]')) console.log(msg.text());
   });
-  await page.goto('/spike/');
-  await expect(page.locator('#log')).toContainText('spike ready');
+  await page.goto('/interop/');
+  await expect(page.locator('#log')).toContainText('interop ready');
 
   const privPem = process.env['LASA_TICKET_PRIVKEY_PEM'];
   expect(privPem, 'global-setup exports the issuer private key').toBeTruthy();
@@ -37,17 +37,12 @@ test('ticketed identity: admission, refusals, supersession', async ({ page }) =>
   console.log('ticketed result:', JSON.stringify(result, null, 2));
   expect(result.error).toBeUndefined();
   expect(result.ok).toBe(true);
-  // KNOWN DEFECT (2026-08-13, identity-implementation.md batch E): the
-  // §4.6 code should ride the WT close capsule, but webtransport-go
-  // v0.12.0's close path loses it — Chrome sees "Connection lost", so
-  // the codes arrive undefined. The refusals themselves are asserted by
-  // ok:true (both connects failed). When the transport fix lands,
-  // tighten these back to .toBe(0x1a5a01) / .toBe(0x1a5a08) — the SDK
-  // side (LasaRejectionError) is ready and unit-tested. Reproduction:
-  // panaudia-server TestWTRejectionCarriesCode (skipped); raw QUIC
-  // delivers codes correctly (TestRawQUICRejectionCarriesCode).
-  if (result.noTicketCode !== undefined) expect(result.noTicketCode).toBe(0x1a5a01);
-  if (result.modeMismatchCode !== undefined) expect(result.modeMismatchCode).toBe(0x1a5a08);
+  // The §4.6 codes ride the WT close capsule into Chrome (defect fixed
+  // 2026-08-21, wt-close-code-defect.md: the vendored webtransport-go
+  // no longer sends STOP_SENDING in the same flight as the capsule).
+  // Correctness rides the code alone, so these are hard assertions.
+  expect(result.noTicketCode).toBe(0x1a5a01);
+  expect(result.modeMismatchCode).toBe(0x1a5a08);
   // The superseded predecessor observed its own close.
   expect(result.supersededClose).toBeDefined();
 });

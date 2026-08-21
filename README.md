@@ -1,13 +1,10 @@
 # LASA — Live Atomic Spatial Audio
 
-A protocol for live, object-based, spatial audio streaming.
-
-LASA is quite different from both the Open Media Alliance's recent Eclipsa/IETF work and MPEG-I, it has a deliberately narrower scope 
-and covers an area that neither of these protocols currently does: live, multi-user, object-based, low-latency, spatial audio for shared virtual spaces.
+A protocol for live, multi-user, object-based, spatial audio streaming.
 
 ### Features:
 
-- Multi-track object-based sources
+- Multiple object-based sources per client
 - Binaural and ambisonic sinks
 - Audio and pose data in the same packet
 - Real-time DB for state
@@ -23,17 +20,17 @@ Architectually, LASA is split between two types of data:
 
 They are handled in quite different ways due to these characteristics.
 
-**MoQ**
+**Media over QUIC**
 
 LASA should really be called LASAoMoQ as we have taken the decision to commit to Media over QUIC as the transport. 
 Doing so allows LASA to take advantage of several features inherent in the protocol:
 
-MoQ provides a single resilient connection with TLS that can carry both low-latency, multi-track audio via datagrams,
+- MoQ provides a single resilient connection with TLS that can carry both low-latency, multi-track audio via datagrams,
 and multiple reliable streams of state data. 
 
-Agnosticism over codec allows us to use binary packets holding both compressed audio and pose data together.
+- Agnosticism over codec allows us to use binary packets holding both compressed audio and pose data together.
 
-MoQ's own identifier structure overlaps to some degree with LASA's allowing us to push some of LASA's own 
+- MoQ's own identifier structure overlaps to some degree with LASA's allowing us to push some of LASA's own 
 structure up into the transport layer, removing redundency and increasing efficiency.
 
 **Atomic Audio**
@@ -51,7 +48,7 @@ ie we can mask a 20ms outage if you will accept 20ms of additional latency.
 
 **Presence**
 
-Like a game engine, LASA, optionally, provides a feed of the pose of all other clients connected to a Space. 
+Like a game engine, LASA, optionally, provides a presence feed containing the pose of all other clients connected to a Space. 
 
 **Distributed State**
 

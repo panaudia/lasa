@@ -115,7 +115,25 @@ func DialWebTransport(ctx context.Context, urlStr string, cfg Config) (*Client, 
 		_ = qconn.CloseWithError(0, "webtransport dial failed")
 		return nil, err
 	}
-	return start(ctx, cfg, webtransportmoq.NewClient(sess))
+	c, err := start(ctx, cfg, webtransportmoq.NewClient(sess))
+	if err != nil {
+		// A server rejection races its own teardown: the control-stream
+		// FIN can reach the blocked MoQ read before the WT_CLOSE_SESSION
+		// capsule is processed, so RunContext fails with a bare EOF. The
+		// session's close cause is the authoritative §4.6 reason, so
+		// wait a grace window for it and prefer it when it carries the
+		// coded SessionError (correctness rides the code alone).
+		select {
+		case <-sess.Context().Done():
+			var sessErr *webtransport.SessionError
+			if cause := context.Cause(sess.Context()); errors.As(cause, &sessErr) {
+				return nil, fmt.Errorf("lasa: session closed by server: %w", sessErr)
+			}
+		case <-time.After(250 * time.Millisecond):
+		}
+		return nil, err
+	}
+	return c, nil
 }
 
 // start runs the MoQ session over an established transport connection —

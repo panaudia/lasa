@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import type { PlayoutRunResult } from '../spike/playout';
+import type { PlayoutRunResult } from '../interop/playout';
 
 // D3 step 3: the 3-thread playout chain — worker decode → SAB jitter
 // ring → playout worklet. Assertions come from the worklet's own stats
@@ -10,8 +10,8 @@ test('worklet playout through the SAB ring', async ({ page }) => {
     const t = msg.text();
     if (t.startsWith('[playout]') || t.startsWith('[JBUF]')) console.log(t);
   });
-  await page.goto('/spike/');
-  await expect(page.locator('#log')).toContainText('spike ready');
+  await page.goto('/interop/');
+  await expect(page.locator('#log')).toContainText('interop ready');
   await expect(page.locator('#log')).toContainText('crossOriginIsolated=true');
 
   const url = process.env['LASA_SPIKE_URL'] ?? 'https://127.0.0.1:44443/lasa';

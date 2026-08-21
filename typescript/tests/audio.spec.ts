@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import type { AudioRunResult } from '../spike/audio';
+import type { AudioRunResult } from '../interop/audio';
 
 // D3: the full audio path in the browser — a multi-entity connection
 // publishes WebCodecs opus mono-object packets and hears itself back
@@ -8,8 +8,8 @@ test('multi-entity audio round-trip over WebTransport', async ({ page }) => {
   page.on('console', (msg) => {
     if (msg.text().startsWith('[audio]')) console.log(msg.text());
   });
-  await page.goto('/spike/');
-  await expect(page.locator('#log')).toContainText('spike ready');
+  await page.goto('/interop/');
+  await expect(page.locator('#log')).toContainText('interop ready');
 
   const url = process.env['LASA_SPIKE_URL'] ?? 'https://127.0.0.1:44443/lasa';
   const certHash = process.env['LASA_SPIKE_CERT_HASH'];

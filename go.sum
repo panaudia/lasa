@@ -8,8 +8,8 @@ github.com/golang-jwt/jwt/v5 v5.3.1 h1:kYf81DTWFe7t+1VvL7eS+jKFVWaUnK9cB1qbwn63Y
 github.com/golang-jwt/jwt/v5 v5.3.1/go.mod h1:fxCRLWMO43lRc8nhHWY6LGqRcf+1gQWArsqaEUEa5bE=
 github.com/mengelbart/qlog v0.1.0 h1:8cDMuCMcKtzkPXUU5FF7OBwqKiy+De0GKvIvNawifoA=
 github.com/mengelbart/qlog v0.1.0/go.mod h1:nIlGcUugkfDu41B8LKdAwjHQ1NxAF54D9hS2EDOlVyk=
-github.com/panaudia/moqtransport v0.8.4-lasa.1 h1:Wiv8mYk+gIf8uURti6e+qECO2iabonH4r15MoC8l4Y0=
-github.com/panaudia/moqtransport v0.8.4-lasa.1/go.mod h1:8YaT5QyKt2vmWjPYr0QYE5LCDejUiPZzM81mMOMgVqA=
+github.com/panaudia/moqtransport v0.8.5-lasa.1 h1:dU/0QXo6rfGKqUPkph7vYfGmM1xbrvN/y5kBuM8kGv4=
+github.com/panaudia/moqtransport v0.8.5-lasa.1/go.mod h1:4XQtjU7qihJs5w2JDPvpuTRWzkJ4UWs5f+Iktiji/e0=
 github.com/pmezard/go-difflib v1.0.0 h1:4DBwDE0NGyQoBHbLQYPwSUPoCMWR5BEzIk/f1lZbAQM=
 github.com/pmezard/go-difflib v1.0.0/go.mod h1:iKH77koFhYxTK1pcRnkKkqfTogsbg7gZNVY4sRDYZ/4=
 github.com/quic-go/go-ossfuzz-seeds v0.1.0 h1:APacT+iIaNF6fd8AGEiN3bT/Jtkd2jz4v4TzM7MFjy0=

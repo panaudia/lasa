@@ -1,10 +1,10 @@
 /**
- * D2 interop spike: the copied draft-16 codec against the LASA server
+ * D2 interop scenario: the copied draft-16 codec against the LASA server
  * (panaudia/moqtransport fork) over WebTransport. Proves, in order:
  * WT session up → CLIENT_SETUP carrying the 0x1A5A1 Connection Config
  * → SERVER_SETUP → SUBSCRIBE presence → SUBSCRIBE_OK → presence
  * datagrams flowing (which also means the server admitted our entity
- * and is rendering the space). Driven by Playwright via __spikeRun.
+ * and is rendering the space). Driven by Playwright via __interopRun.
  */
 
 import { MoqConnection } from '../src/transport/connection';
@@ -12,7 +12,7 @@ import { MoqSession } from '../src/transport/session';
 import { MoqRole } from '../src/transport/types';
 import { connectionConfigParam, presenceNamespace, TRACK_PRESENCE } from '../src/lasa/setup';
 
-export interface SpikeResult {
+export interface InteropResult {
   ok: boolean;
   steps: string[];
   presenceBytes?: number;
@@ -22,7 +22,7 @@ export interface SpikeResult {
 const logEl = document.getElementById('log')!;
 function log(line: string): void {
   logEl.textContent += line + '\n';
-  console.log('[spike]', line);
+  console.log('[interop]', line);
 }
 
 function hashOption(certHashBase64?: string) {
@@ -33,7 +33,7 @@ function hashOption(certHashBase64?: string) {
   return [{ algorithm: 'sha-256', value: bytes.buffer }];
 }
 
-async function run(url: string, certHashBase64?: string): Promise<SpikeResult> {
+async function run(url: string, certHashBase64?: string): Promise<InteropResult> {
   const steps: string[] = [];
   const step = (s: string) => {
     steps.push(s);
@@ -67,13 +67,13 @@ async function runSession(
   conn: MoqConnection,
   steps: string[],
   step: (s: string) => void
-): Promise<SpikeResult> {
+): Promise<InteropResult> {
   try {
     const session = new MoqSession(conn, true);
     await session.initialize(MoqRole.PUBSUB, undefined, 100, [
       connectionConfigParam({
-        clientId: 'spike',
-        entities: [{ id: 'e-spike', name: 'Spike' }],
+        clientId: 'interop',
+        entities: [{ id: 'e-interop', name: 'Interop' }],
       }),
     ]);
     step('setup-complete');
@@ -116,7 +116,7 @@ import { ticketedRun, type TicketedRunArgs, type TicketedRunResult } from './tic
 
 declare global {
   interface Window {
-    __spikeRun: (url: string, certHashBase64?: string) => Promise<SpikeResult>;
+    __interopRun: (url: string, certHashBase64?: string) => Promise<InteropResult>;
     __audioRun: (url: string, certHashBase64?: string) => Promise<AudioRunResult>;
     __stateRun: (url: string, certHashBase64?: string) => Promise<StateRunResult>;
     __playoutRun: (url: string, certHashBase64?: string) => Promise<PlayoutRunResult>;
@@ -125,7 +125,7 @@ declare global {
     __ticketedRun: (args: TicketedRunArgs) => Promise<TicketedRunResult>;
   }
 }
-window.__spikeRun = run;
+window.__interopRun = run;
 window.__audioRun = audioRun;
 window.__stateRun = stateRun;
 window.__playoutRun = playoutRun;
@@ -134,4 +134,4 @@ window.__latencyRun = latencyRun;
 window.__ticketedRun = ticketedRun;
 // The capture/playout SAB rings need cross-origin isolation; surface the
 // state on load so a missing COOP/COEP header is obvious immediately.
-log(`spike ready (crossOriginIsolated=${String(globalThis.crossOriginIsolated)})`);
+log(`interop ready (crossOriginIsolated=${String(globalThis.crossOriginIsolated)})`);

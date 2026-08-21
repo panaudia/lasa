@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import type { CaptureRunResult } from '../spike/capture';
+import type { CaptureRunResult } from '../interop/capture';
 
 // D3 step 4: the complete 3-thread round trip — oscillator → capture
 // worklet → SAB ring → worker Opus encode (mono-object, SAB-fresh pose)
@@ -11,7 +11,7 @@ test('full capture-to-playout round trip through both SAB rings', async ({ page 
     const t = msg.text();
     if (t.startsWith('[capture]') || t.startsWith('[JBUF]')) console.log(t);
   });
-  await page.goto('/spike/');
+  await page.goto('/interop/');
   await expect(page.locator('#log')).toContainText('crossOriginIsolated=true');
 
   const url = process.env['LASA_SPIKE_URL'] ?? 'https://127.0.0.1:44443/lasa';

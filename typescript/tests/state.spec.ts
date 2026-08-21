@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import type { StateRunResult } from '../spike/state';
+import type { StateRunResult } from '../interop/state';
 
 // D3 state client: subgroup lanes → store, own-echo of a client write,
 // admission keys visible, and a second client observing the write.
@@ -7,8 +7,8 @@ test('state sync round-trip over WebTransport', async ({ page }) => {
   page.on('console', (msg) => {
     if (msg.text().startsWith('[state]')) console.log(msg.text());
   });
-  await page.goto('/spike/');
-  await expect(page.locator('#log')).toContainText('spike ready');
+  await page.goto('/interop/');
+  await expect(page.locator('#log')).toContainText('interop ready');
 
   const url = process.env['LASA_SPIKE_URL'] ?? 'https://127.0.0.1:44443/lasa';
   const certHash = process.env['LASA_SPIKE_CERT_HASH'];

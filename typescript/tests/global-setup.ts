@@ -3,13 +3,13 @@
  * interop rig — TWO instances, one per space mode (ticketed XOR
  * unticketed, lasa-core.md §4.4):
  *
- *   44443 — unticketed dev mode (the original spike rig)
+ *   44443 — unticketed dev mode (the original interop rig)
  *   44444 — ticketed, verifying against a keypair generated here; the
  *            private half rides process.env so specs can mint tickets
  *            (tests/mint-ticket.ts)
  *
  * Machine-local sibling-path coupling, as go.mod replace directives
- * are elsewhere in this workspace — acceptable for the spike/test rig.
+ * are elsewhere in this workspace — acceptable for the interop/test rig.
  */
 import { spawn, execSync, type ChildProcess } from 'node:child_process';
 import { generateKeyPairSync } from 'node:crypto';
@@ -57,7 +57,7 @@ function bootServer(bin: string, env: NodeJS.ProcessEnv, label: string): Promise
 }
 
 export default async function globalSetup(): Promise<void> {
-  const dir = mkdtempSync(join(tmpdir(), 'lasa-spike-'));
+  const dir = mkdtempSync(join(tmpdir(), 'lasa-interop-'));
   const bin = join(dir, 'panaudia-server');
   execSync(`go build -o ${JSON.stringify(bin)} .`, { cwd: serverRepo, stdio: 'inherit' });
 
