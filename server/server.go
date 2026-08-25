@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/panaudia/moqtransport"
@@ -111,6 +112,8 @@ type Server struct {
 	collector *presence.Collector
 	gate      *moderationGate
 	closed    chan struct{}
+	closeOnce sync.Once
+	stopping  atomic.Bool // Shutdown began: new registrations are severed too
 
 	// Live-session registry: the moderation gate's sever surface.
 	liveMu sync.Mutex
@@ -136,6 +139,12 @@ func (s *Server) registerLive(cs *connSession) {
 	// visible. Either ordering catches it; no window remains.
 	if s.gate.check(cs.resolved) != nil {
 		cs.cancel(errBlockedLive)
+	}
+	// Likewise a session that completed its handshake after Shutdown
+	// began: sever it with the shutdown code rather than let it live
+	// on into a closed engine.
+	if s.stopping.Load() {
+		cs.cancel(errShuttingDown)
 	}
 }
 
@@ -257,10 +266,46 @@ func (s *Server) Engine() *state.Engine { return s.engine }
 // shell removes entities from the roster at departure.
 func (s *Server) Presence() *presence.Collector { return s.collector }
 
-// Close stops the space.
+// Close stops the space. Live sessions are not told; use Shutdown for
+// an orderly stop. Idempotent.
 func (s *Server) Close() {
-	close(s.closed)
-	s.engine.Close()
+	s.closeOnce.Do(func() {
+		close(s.closed)
+		s.engine.Close()
+	})
+}
+
+// Shutdown stops the space deliberately: every live session is closed
+// with ErrCodeShuttingDown (so clients can tell a stop from a dead
+// network), their teardowns are awaited — each runs the normal
+// departure funnel, EntityLeft included — until ctx expires, and then
+// the space is closed. The caller stops accepting new transports
+// before or alongside this; a handshake that completes meanwhile is
+// severed the same way.
+func (s *Server) Shutdown(ctx context.Context) error {
+	s.stopping.Store(true)
+	s.liveMu.Lock()
+	live := make([]*connSession, 0, len(s.live))
+	for cs := range s.live {
+		live = append(live, cs)
+	}
+	s.liveMu.Unlock()
+	for _, cs := range live {
+		cs.cancel(errShuttingDown)
+	}
+	var err error
+	for _, cs := range live {
+		select {
+		case <-cs.torndown:
+		case <-ctx.Done():
+			err = ctx.Err()
+		}
+		if err != nil {
+			break
+		}
+	}
+	s.Close()
+	return err
 }
 
 func (s *Server) tickEngine() {
@@ -293,6 +338,7 @@ func (s *Server) ServeQUIC(l *quic.Listener) error {
 // guaranteed teardown signal (invariant L5).
 func (s *Server) ServeConn(transportCtx context.Context, conn moqtransport.Connection) error {
 	cs := newConnSession(s)
+	cs.raw = conn
 	cs.transport = conn.Protocol().String()
 	go func() {
 		select {

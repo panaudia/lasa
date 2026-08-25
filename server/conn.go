@@ -22,13 +22,31 @@ var (
 	errSessionEnded = errors.New("server: session ended")
 	errBlockedLive  = errors.New("server: blocked by moderation")
 	errEvicted      = errors.New("server: evicted by a colliding admission")
+	errShuttingDown = errors.New("server: space shutting down")
 )
+
+// closeCodeFor maps a deliberate sever cause to the §4.6 code the
+// established session is closed with, so the client can tell a block,
+// a supersession and a shutdown apart from a dead transport. Anything
+// else — transport failure, protocol error, normal end — is code 0.
+func closeCodeFor(cause error) (code uint64, reason string) {
+	switch {
+	case errors.Is(cause, errBlockedLive):
+		return uint64(wire.ErrCodeBlocked), "blocked"
+	case errors.Is(cause, errEvicted):
+		return uint64(wire.ErrCodeSuperseded), "superseded by a newer connection"
+	case errors.Is(cause, errShuttingDown):
+		return uint64(wire.ErrCodeShuttingDown), "space shutting down"
+	}
+	return 0, ""
+}
 
 // connSession is one client connection: admission state, ingress routing,
 // and per-connection track plumbing.
 type connSession struct {
 	srv    *Server
 	moq    *moqtransport.Session
+	raw    moqtransport.Connection // the transport, for a coded close at teardown
 	ctx    context.Context
 	cancel context.CancelCauseFunc
 
@@ -496,6 +514,12 @@ func (cs *connSession) teardown() {
 	}
 	cs.srv.sinks.dropConn(cs)
 	cs.srv.presence.RemoveSender(cs)
+	// A deliberate sever closes the transport with its §4.6 code first
+	// (the cause recorded when the session was cancelled); Session.Close
+	// then finds the connection already closed and only reaps.
+	if code, reason := closeCodeFor(context.Cause(cs.ctx)); code != 0 && cs.raw != nil {
+		_ = cs.raw.CloseWithError(code, reason)
+	}
 	_ = cs.moq.Close()
 	// Last: release any successor waiting out this teardown (start's
 	// supersession wait) — everything above, EntityLeft included, has

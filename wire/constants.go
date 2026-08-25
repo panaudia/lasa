@@ -29,6 +29,8 @@ const (
 	ErrCodeBlocked           uint32 = 0x1A5A06 // blocked
 	ErrCodeAtCapacity        uint32 = 0x1A5A07 // space at capacity
 	ErrCodeModeMismatch      uint32 = 0x1A5A08 // ticket presented to an unticketed space
+	ErrCodeShuttingDown      uint32 = 0x1A5A09 // space shutting down (deliberate server stop)
+	ErrCodeSuperseded        uint32 = 0x1A5A0A // superseded by a newer connection with the same client id (§4.4)
 )
 
 const (

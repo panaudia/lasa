@@ -124,10 +124,13 @@ of it through `onClosed`.
 ## The session lifecycle
 
 `onClosed` fires when a session that completed its handshake ends:
-a moderation sever, a supersession as above, or a transport failure.
-`closeCode` carries a LASA code when the close was a deliberate LASA
-action. A rejected handshake never reaches `onClosed`. It is
-`connect`'s to report.
+a moderation sever, a supersession as above, a server shutdown, or a
+transport failure. `closeCode` carries a LASA code when the close was
+a deliberate LASA action: `LASA_ERR.BLOCKED`, `LASA_ERR.SUPERSEDED`,
+or `LASA_ERR.SHUTTING_DOWN`, the last of which means the space is
+stopping and reconnecting later is reasonable. A transport failure
+carries no LASA code. A rejected handshake never reaches `onClosed`.
+It is `connect`'s to report.
 
 `close()` stops every capture and sink, ends the state sync, and
 tears down the worker and the transport. It is idempotent: a second

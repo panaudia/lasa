@@ -26,6 +26,10 @@ export const LASA_ERR = {
   AT_CAPACITY: 0x1a5a07,
   /** Ticket presented to an unticketed space (mode mismatch). */
   MODE_MISMATCH: 0x1a5a08,
+  /** The space is shutting down deliberately; reconnecting later is reasonable. */
+  SHUTTING_DOWN: 0x1a5a09,
+  /** Superseded by a newer connection exercising the same client id (§4.4). */
+  SUPERSEDED: 0x1a5a0a,
 } as const;
 
 const NAMES: Record<number, string> = {
@@ -38,6 +42,8 @@ const NAMES: Record<number, string> = {
   [LASA_ERR.BLOCKED]: 'blocked',
   [LASA_ERR.AT_CAPACITY]: 'space at capacity',
   [LASA_ERR.MODE_MISMATCH]: 'ticket presented to an unticketed space',
+  [LASA_ERR.SHUTTING_DOWN]: 'space shutting down',
+  [LASA_ERR.SUPERSEDED]: 'superseded by a newer connection',
 };
 
 /**
@@ -48,7 +54,7 @@ const NAMES: Record<number, string> = {
 export function isLasaRejectionCode(code: number): boolean {
   return (
     code >= LASA_ERR.MALFORMED_CONFIG &&
-    code <= LASA_ERR.MODE_MISMATCH &&
+    code <= LASA_ERR.SUPERSEDED &&
     code !== LASA_ERR.ID_COLLISION_RETIRED
   );
 }

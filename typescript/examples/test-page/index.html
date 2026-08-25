@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>LASA test page</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <header>
+      <h1>LASA test page</h1>
+      <span id="isolation"></span>
+    </header>
+
+    <div id="hfp-banner" hidden style="background: #5a3a1a; color: #f0c674; padding: 0.5em 1em; font-size: 0.9em"></div>
+
+    <main>
+      <section id="connect-card" class="card">
+        <h2>Connection</h2>
+        <div class="grid">
+          <label>Server URL <input id="url" value="https://127.0.0.1:4443/lasa" /></label>
+          <label>Space <input id="space" value="main" /></label>
+          <label>Client id <input id="client-id" /></label>
+          <label>Cert hash (dev, base64 SHA-256; blank with trusted certs)
+            <input id="cert-hash" placeholder="from the server boot log" /></label>
+          <label class="wide">Ticket (blank = unticketed)
+            <textarea id="ticket" rows="2"></textarea></label>
+        </div>
+        <div class="row">
+          <button id="connect">Connect</button>
+          <button id="disconnect" disabled>Disconnect</button>
+          <span id="conn-status">disconnected</span>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>Entities</h2>
+        <div class="row">
+          <input id="new-entity-id" placeholder="entity id" />
+          <input id="new-entity-name" placeholder="name" />
+          <button id="add-entity" disabled>Add entity</button>
+        </div>
+        <div id="entities"></div>
+      </section>
+
+      <section class="card">
+        <h2>Space map <small>(drag your entities; presence drives the rest)</small></h2>
+        <canvas id="map" width="440" height="440"></canvas>
+        <div class="row">
+          <label>Yaw <input type="range" id="yaw" min="-3.1416" max="3.1416" step="0.01" value="0" disabled /></label>
+          <span id="yaw-entity" class="muted">select one of your entities by dragging it</span>
+        </div>
+      </section>
+
+      <section class="card">
+        <h2>State</h2>
+        <div class="row">
+          <input id="state-key" placeholder="key (e.g. lasa.entity.<id>.attrs.colour)" class="grow" />
+          <input id="state-value" placeholder="value (JSON)" class="grow" />
+          <button id="state-set" disabled>Set</button>
+          <button id="state-clear" disabled>Clear</button>
+        </div>
+        <div id="state-table" class="mono scroll"></div>
+      </section>
+
+      <section class="card">
+        <h2>Diagnostics</h2>
+        <div id="diagnostics" class="mono"></div>
+        <h3>Log</h3>
+        <div id="log" class="mono scroll"></div>
+      </section>
+    </main>
+
+    <script type="module" src="/src/app.ts"></script>
+  </body>
+</html>

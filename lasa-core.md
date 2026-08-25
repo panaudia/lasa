@@ -399,9 +399,16 @@ may be truncated or dropped, and MUST NOT require parsing.
 | `0x1A5A06` | blocked |
 | `0x1A5A07` | space at capacity |
 | `0x1A5A08` | ticket presented to an unticketed space (§4.4) |
+| `0x1A5A09` | space shutting down: the server is stopping deliberately; the client MAY reconnect later |
+| `0x1A5A0A` | superseded by a newer connection exercising the same client id (§4.4) |
 
 The blocked rejection's reason string SHOULD carry the block expiry
 timestamp.
+
+The same codes close an **established** session when the server ends
+it deliberately: a live block (`0x1A5A06`), a supersession
+(`0x1A5A0A`), a shutdown (`0x1A5A09`). A session that ends for any
+other reason (transport failure, protocol error) carries no LASA code.
 
 ## 5. Audio formats
 

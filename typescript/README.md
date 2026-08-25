@@ -108,6 +108,17 @@ The [API reference](docs/api/index.md) is generated from the source
 with TypeDoc, as markdown, and committed. `npm run docs:api`
 regenerates it after a change to the exported surface.
 
+## Examples
+
+- [minimal](examples/minimal) is the starting point to copy: join a
+  space, send the microphone, play the binaural render, list who is
+  there. It depends on the built package the way a published
+  dependency would.
+- [test-page](examples/test-page) is the development instrument:
+  every subsystem on one page, consuming the SDK from source.
+
+Both need a running space; each README says how to start one.
+
 ## Development
 
 ```

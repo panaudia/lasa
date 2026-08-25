@@ -1,0 +1,19 @@
+{
+  "name": "lasa-minimal",
+  "version": "0.0.1",
+  "private": true,
+  "description": "The smallest useful LASA client: join a space, talk, listen, see who is there",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@panaudia/lasa-client": "file:../.."
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0",
+    "vite": "^6.0.0"
+  }
+}
