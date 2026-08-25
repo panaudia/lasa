@@ -270,11 +270,10 @@ export interface SubgroupObjectEvent {
   payload: Uint8Array;
 }
 
-/** Diagnostics: loop endings, connection state changes, decode errors. */
+/** Diagnostics: loop endings, decode and encode errors. */
 export interface NoticeEvent {
   type: 'notice';
   event:
-    | 'connection-state'
     | 'datagram-reader-done'
     | 'datagram-reader-error'
     | 'subgroup-accept-done'

@@ -1,10 +1,10 @@
 /**
  * Store rule tests: ports of the Go clientstore suite (store_test.go)
  * — the resurrection guard, the snapshot deletion rule, invariant F7,
- * termination, stall detection, persistence, and epoch change.
+ * termination, stall detection, cursor carry-over, and epoch change.
  */
 import { describe, expect, it } from 'vitest';
-import { MemPersistence, Store, type Persistence } from '../src/lasa/store';
+import { Store } from '../src/lasa/store';
 import type { StateMessage } from '../src/lasa/statewire';
 
 const epochA = new Uint8Array([1, 1, 1, 1, 1, 1, 1, 1]);
@@ -33,8 +33,8 @@ function testClock(): Clock {
   return { now: () => t, advance: (ms) => (t += ms) };
 }
 
-async function newStore(p: Persistence | null = null, clock?: Clock): Promise<Store> {
-  return Store.create('space1', [''], p, clock ? { clock: clock.now } : {});
+async function newStore(clock?: Clock): Promise<Store> {
+  return Store.create([''], clock ? { clock: clock.now } : {});
 }
 
 // The resurrection trap (lasa-core.md §6.5 note): a live clear during
@@ -60,16 +60,13 @@ it('resurrection guard', async () => {
 // absent from the snapshot whose seq ≤ the cut H; keys set live during
 // the window (seq > H) survive.
 it('snapshot deletion rule', async () => {
-  const p = new MemPersistence();
-  // Stale local state from a previous epoch/instance, via persistence.
-  await p.save('space1', {
-    entries: new Map([
-      ['old.a', { value: new TextEncoder().encode('x'), seq: 5n }],
-      ['old.b', { value: new TextEncoder().encode('y'), seq: 8n }],
-    ]),
-    cursor: null,
-  });
-  const s = await newStore(p);
+  const s = await newStore();
+  // Stale local state from a previous subscription instance.
+  await s.applyCatchUp(begin('snapshot'));
+  await s.applyCatchUp(set('old.a', 'x', 5n));
+  await s.applyCatchUp(set('old.b', 'y', 8n));
+  await s.applyCatchUp(frontier(epochA, 8n));
+  s.terminated();
 
   await s.applyCatchUp(begin('snapshot'));
   await s.applyCatchUp(set('old.a', 'fresh', 20n));
@@ -83,22 +80,18 @@ it('snapshot deletion rule', async () => {
 });
 
 // Invariant F7: live frontiers arriving before the catch-up frontier
-// must not earn a cursor; crashing in the window loses nothing because
-// nothing was persisted.
+// must not earn a cursor — the store is not at a provable cut.
 it('no cursor before the first catch-up frontier', async () => {
-  const p = new MemPersistence();
-  const s = await newStore(p);
+  const s = await newStore();
   await s.applyCatchUp(begin('snapshot'));
   await s.applyLive(frontier(epochA, 500n)); // live frontier first
 
   expect(s.subscribeParams().cursor).toBeUndefined();
-  expect(await p.load('space1')).toBeNull();
 
   await s.applyCatchUp(frontier(epochA, 300n));
   const cur = s.subscribeParams().cursor;
   expect(cur?.seq).toBe(500n); // max across both paths
-  const snap = await p.load('space1');
-  expect(snap?.cursor).toBeTruthy();
+  expect(Array.from(cur!.epoch)).toEqual(Array.from(epochA));
 });
 
 // Subscription termination mid-window: transient records belong to the
@@ -118,31 +111,36 @@ it('terminated discards the window', async () => {
 
 it('catch-up stall detection', async () => {
   const clk = testClock();
-  const s = await newStore(null, clk);
+  const s = await newStore(clk);
   expect(s.catchUpStalled(1000)).toBe(false);
   await s.applyCatchUp(begin('delta'));
   clk.advance(2000);
   expect(s.catchUpStalled(1000)).toBe(true);
 });
 
-// Persistence round trip, including the set-hash guard: a cursor earned
-// under a different prefix set must not be presented.
-it('persistence round trip with the set-hash guard', async () => {
-  const p = new MemPersistence();
-  const s = await newStore(p);
+// The cursor and entries carry over a subscription instance ending: a
+// re-subscribe (StateSync's retry, or a new client handed the same
+// store) presents the earned cursor, stamped with the store's set-hash,
+// and can land on a delta. Eligibility alone resets.
+it('cursor survives termination for the next instance', async () => {
+  const s = await newStore();
   await s.applyCatchUp(begin('snapshot'));
   await s.applyCatchUp(set('app.k', 'v', 7n));
   await s.applyCatchUp(frontier(epochA, 10n));
+  s.terminated();
 
-  const s2 = await newStore(p);
-  expect(text(s2.get('app.k'))).toBe('v');
-  const c = s2.subscribeParams().cursor;
+  expect(text(s.get('app.k'))).toBe('v');
+  const c = s.subscribeParams().cursor;
   expect(c?.seq).toBe(10n);
   expect(Array.from(c!.epoch)).toEqual(Array.from(epochA));
+  expect(c!.setHash.length).toBe(32);
 
-  // Different prefix set: the persisted cursor is not presentable.
-  const s3 = await Store.create('space1', ['app.'], p);
-  expect(s3.subscribeParams().cursor).toBeUndefined();
+  // The new instance must earn its own frontier before advancing it.
+  await s.applyLive(frontier(epochA, 50n));
+  expect(s.subscribeParams().cursor?.seq).toBe(10n);
+  await s.applyCatchUp(begin('delta'));
+  await s.applyCatchUp(frontier(epochA, 40n));
+  expect(s.subscribeParams().cursor?.seq).toBe(50n);
 });
 
 // An epoch change invalidates the cursor; the new epoch's frontier

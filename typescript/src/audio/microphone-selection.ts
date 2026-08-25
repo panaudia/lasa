@@ -112,8 +112,10 @@ const BUILTIN_KEYWORDS = [
 
 // ── Classification ──────────────────────────────────────────────────────────
 
+/** Microphone class inferred from its label. */
 export type MicrophoneType = 'bluetooth' | 'usb' | 'builtin' | 'unknown';
 
+/** An audio input device with its inferred class. */
 export interface ClassifiedMicrophone {
   deviceId: string;
   label: string;
@@ -187,17 +189,30 @@ function compareMicrophones(a: ClassifiedMicrophone, b: ClassifiedMicrophone): n
  * returns full labels without opening any microphone — critical for Bluetooth
  * headsets, where merely opening the mic (even our brief label-population
  * probe) flips the headset into HFP and collapses its output to mono, a state
- * macOS/the device can then hold on to. Returns false when the Permissions API
- * is unavailable (the caller falls back to the one-time getUserMedia probe).
+ * macOS/the device can then hold on to. Where the Permissions API is
+ * unavailable or does not know the `microphone` name (Firefox throws a
+ * TypeError), falls back to enumerateDevices(): a non-empty input label is
+ * only ever readable once permission has been granted, and enumeration
+ * opens nothing.
  */
 export async function micPermissionGranted(): Promise<boolean> {
   try {
     const permissions = (navigator as Navigator & {
       permissions?: { query(desc: { name: string }): Promise<{ state: string }> };
     }).permissions;
-    if (!permissions?.query) return false;
+    if (!permissions?.query) return inputLabelsReadable();
     const status = await permissions.query({ name: 'microphone' });
     return status.state === 'granted';
+  } catch {
+    return inputLabelsReadable();
+  }
+}
+
+/** True when some audio input already exposes a label (permission granted). */
+async function inputLabelsReadable(): Promise<boolean> {
+  try {
+    const devices = await navigator.mediaDevices.enumerateDevices();
+    return devices.some((d) => d.kind === 'audioinput' && d.label !== '');
   } catch {
     return false;
   }

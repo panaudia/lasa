@@ -4,21 +4,12 @@
  * Handles the underlying WebTransport connection to the MOQ server.
  */
 
-import { ConnectionState, WebTransportOptions } from './types.js';
+import { ConnectionState } from './types.js';
 import { parseObjectDatagram } from './moq-transport.js';
 import { DatagramRouter, type DatagramHandler } from './datagram-router.js';
 
 // Re-exported for back-compat: subscribers import DatagramHandler from here.
 export type { DatagramHandler };
-
-/**
- * The minimal send surface a publisher needs. Satisfied by `MoqConnection`
- * (main-thread transport) and by a worker-backed adapter that forwards bytes to
- * the worker's `sendDatagram` RPC — so publishers work either way.
- */
-export interface DatagramSender {
-  sendDatagram(data: Uint8Array): Promise<void>;
-}
 
 /**
  * Connection event handlers
@@ -37,16 +28,15 @@ export class MoqConnection {
   private handlers: ConnectionEventHandlers = {};
   private datagramWriter: WritableStreamDefaultWriter<Uint8Array> | null = null;
 
-  // Datagram dispatcher: the read loop lives here (transport concern); the
-  // trackAlias→handler routing + SUBSCRIBE_OK race buffer live in the router
-  // (Phase 1 extraction — worker-transport-plan.md).
+  // Main-thread datagram path: the read loop lives here, the
+  // trackAlias->handler routing and the SUBSCRIBE_OK race buffer in the
+  // router. LasaClient never uses it (the worker owns the read loop and
+  // the client routes through its own DatagramRouter); it is the raw
+  // MoqConnection + MoqSession usage, exercised by interop/main.ts.
   private router = new DatagramRouter();
   private datagramDispatcherRunning: boolean = false;
-  // 'main' = this class reads the datagram readable directly (default/fallback).
-  // 'worker' = the receive Worker owns the read loop (design §11.4); the main
-  // dispatcher is suppressed and parsed non-audio datagrams arrive via
-  // ingestForwardedDatagram(), still routed through the same DatagramRouter
-  // (handler map + SUBSCRIBE_OK race buffer), unchanged.
+  // 'worker' once takeDatagramReadableForWorker() has handed the
+  // readable to the receive Worker; the main dispatcher then never starts.
   private datagramMode: 'main' | 'worker' = 'main';
 
   constructor(private readonly serverUrl: string, private readonly debug: boolean = false) {}
@@ -213,36 +203,6 @@ export class MoqConnection {
   }
 
   /**
-   * Get the incoming unidirectional streams reader
-   */
-  getIncomingStreams(): ReadableStream<WebTransportReceiveStream> {
-    if (!this.transport) {
-      throw new Error('Not connected');
-    }
-    return this.transport.incomingUnidirectionalStreams;
-  }
-
-  /**
-   * Get the datagram writer/reader for audio frames
-   */
-  getDatagrams(): WebTransportDatagramDuplexStream {
-    if (!this.transport) {
-      throw new Error('Not connected');
-    }
-    return this.transport.datagrams;
-  }
-
-  /**
-   * Get a reader for incoming datagrams
-   */
-  getDatagramReader(): ReadableStreamDefaultReader<Uint8Array> | null {
-    if (!this.transport) {
-      return null;
-    }
-    return this.transport.datagrams.readable.getReader();
-  }
-
-  /**
    * Send a datagram (used for audio frames)
    */
   async sendDatagram(data: Uint8Array): Promise<void> {
@@ -292,24 +252,6 @@ export class MoqConnection {
   }
 
   /**
-   * Revert to main datagram mode if worker setup failed before locking the
-   * stream (so a later registerDatagramHandler starts the main dispatcher).
-   */
-  revertToMainDatagramMode(): void {
-    this.datagramMode = 'main';
-  }
-
-  /**
-   * Feed a parsed datagram forwarded from the receive Worker through the normal
-   * dispatch path (handlers map + SUBSCRIBE_OK pending buffer). The worker only
-   * forwards non-audio tracks; audio is decoded in the worker and never arrives
-   * here.
-   */
-  ingestForwardedDatagram(trackAlias: number, payload: Uint8Array, groupId: bigint, objectId: bigint): void {
-    this.router.ingest({ trackAlias, payload, groupId, objectId });
-  }
-
-  /**
    * Register a datagram handler for a specific track alias. Starts the dispatcher
    * on first registration (transport concern); the router drains any datagrams
    * that arrived for this alias before registration (the SUBSCRIBE_OK race).
@@ -324,14 +266,6 @@ export class MoqConnection {
   /** Unregister a datagram handler; the router discards any still-buffered datagrams for it. */
   unregisterDatagramHandler(trackAlias: number): void {
     this.router.unregister(trackAlias);
-  }
-
-  /**
-   * Number of buffered pre-handler datagrams currently held. Exposed for tests and
-   * diagnostics; production callers shouldn't need it.
-   */
-  getPendingDatagramCount(): number {
-    return this.router.pendingCount();
   }
 
   /**

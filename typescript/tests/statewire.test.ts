@@ -113,6 +113,7 @@ describe('subscribe params', () => {
 // truncation instead of clamping, and validates prefixes so the
 // canonical sort is bytewise by construction.
 import { canonicalPrefixes, MAX_KEY_LEN } from '../src/lasa/statewire';
+import { MalformedError } from '../src/lasa/wire';
 
 describe('key and prefix validation', () => {
   const enc = (m: StateMessage) => encodeStateMessage(m, 'upstream');
@@ -145,5 +146,23 @@ describe('key and prefix validation', () => {
       'lasa.space.',
     ]);
     expect(canonicalPrefixes([''])).toEqual(['']); // empty prefix stays legal
+  });
+});
+
+// B10: the upstream layout never carries seq, so a client write must not
+// have to invent one; downstream encoding without it is a caller error.
+describe('upstream ops without seq', () => {
+  it('encodes a seq-less set identically to one with a dummy seq', () => {
+    const key = 'lasa.x';
+    const value = new Uint8Array([1, 2, 3]);
+    const a = encodeStateMessage({ kind: 'set', key, value }, 'upstream');
+    const b = encodeStateMessage({ kind: 'set', key, value, seq: 0n }, 'upstream');
+    expect(a).toEqual(b);
+    const c = encodeStateMessage({ kind: 'group', ops: [{ kind: 'clear', key }] }, 'upstream');
+    expect(c[0]).toBe(3);
+  });
+
+  it('refuses to encode a seq-less op downstream', () => {
+    expect(() => encodeStateMessage({ kind: 'clear', key: 'lasa.x' }, 'downstream')).toThrow(MalformedError);
   });
 });

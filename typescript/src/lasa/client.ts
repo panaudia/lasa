@@ -34,57 +34,80 @@ import {
   type PresenceKeyframe,
   type SinkPacket,
 } from './wire.js';
-import { encodeStateMessage, type StateMessage } from './statewire.js';
+import { encodeStateMessage, type UpstreamStateMessage } from './statewire.js';
+import { EntityControls, SpaceControls, type BaseValue } from './base.js';
 import { StateSync, type StateSyncOptions } from './state.js';
 import { PresenceRoster } from './roster.js';
 import type { Store } from './store.js';
 import { WorkerTransport, WorkerSessionProxy } from '../worker/worker-transport.js';
+import { createMoqWorker } from '../worker/moq-worker-loader.js';
 import { SinkPlayer, type SinkPlayerOptions } from '../audio/player.js';
 import { CapturePipeline } from '../audio/capture.js';
 import type { Pose } from './wire.js';
 
+/** A sink track format: `binaural` (2 channels), `ambi2` (9) or `ambi3` (16). */
 export type SinkFormat = 'binaural' | 'ambi2' | 'ambi3';
+/** Receives each presence packet with its datagram group id (see {@link LasaClient.subscribePresence}). */
 export type PresenceHandler = (groupId: bigint, msg: PresenceKeyframe | PresenceDelta) => void;
+/** Receives each sink packet with its sequence number (see {@link LasaClient.subscribeSink}). */
 export type SinkHandler = (seq: bigint, packet: SinkPacket) => void;
 
+/** Options for {@link LasaClient.startCapture}. */
 export interface CaptureOptions {
   /** The audio source feeding this entity (mic node, oscillator, DAW channel…). */
   source: AudioNode;
   /** Which channel of the source (default 0) — stereo capture = two entities, indices 0/1. */
   channelIndex?: number;
-  /** Opus bitrate, bits/s (default 64000). */
+  /**
+   * Opus target bitrate in bits per second (default 64000, i.e.
+   * 64 kb/s). An encoder setting, not a wire-format one: voice is
+   * comfortable at 32–48 kb/s, a music or DAW source wants 96–128.
+   * Unrelated to the sample rate, which is always 48 kHz.
+   */
   bitrate?: number;
-  /** Opus frame duration in ms (default 5 — the LASA cadence). */
-  frameDurationMs?: number;
   /** Initial pose (default: home). Update live via the handle. */
   pose?: Pose;
 }
 
+/** A running capture, returned by {@link LasaClient.startCapture}. */
 export interface CaptureHandle {
   /** Publish the entity's freshest pose — wait-free, call at any rate. */
   setPose(pose: Pose): void;
+  /** Stops this entity's capture (same as {@link LasaClient.stopCapture}). */
   stop(): Promise<void>;
 }
 
 /** Ingress health of a decoded sink track (see worker protocol). */
 export interface SinkIngress {
+  /** Sink packets received. */
   received: number;
+  /** Runs of one or more missing sequence numbers. */
   gapEvents: number;
+  /** Frames never received (after any redundancy repair). */
   lostFrames: number;
+  /** Packets that arrived out of sequence order. */
   reordered: number;
+  /** Frames the decoder rejected. */
   decodeErrors: number;
 }
 
+/** Options for {@link LasaClient.connect}. See `docs/connecting.md`. */
 export interface LasaClientOptions {
   /** WebTransport endpoint, e.g. https://host:4443/lasa */
   url: string;
+  /** The space to join. In a ticketed space this MUST equal the ticket's `aud` claim. */
   spaceId: string;
+  /** This client's public id within the space. With a ticket it MUST match the `client_id` claim. */
   clientId: string;
+  /** Signed JWT ticket. Required by a ticketed space, refused by an unticketed one. */
   ticket?: string;
+  /** Ad-hoc entity definitions (unticketed spaces, or presenter/admin tickets). */
   entities?: LasaEntity[];
+  /** Instantiations of ticket-defined entities, by id. */
   setups?: LasaSetup[];
   /** Dev-cert pinning (base64 SHA-256 from the server boot log). */
   serverCertificateHashBase64?: string;
+  /** Console logging from the client, worker and audio graph. */
   debug?: boolean;
   /**
    * The session closed after a completed handshake — a moderation
@@ -97,15 +120,52 @@ export interface LasaClientOptions {
   onClosed?: (info: { closeCode?: number; reason?: string }) => void;
 }
 
-/** Publishes one entity's mono-object source track. */
+/**
+ * Publishes one entity's mono-object source track, and carries the
+ * owner-scope base-profile operations for it (personal mutes and
+ * solos, runtime attrs — see {@link EntityControls}).
+ */
 export class EntityPublisher {
   private scratch = new Uint8Array(2048);
   private frame = new Uint8Array(1500);
+  private readonly controls: EntityControls;
 
+  /** @internal Built by LasaClient. */
   constructor(
     private readonly transport: WorkerTransport,
-    private readonly alias: number
-  ) {}
+    private readonly alias: number,
+    /** The entity this publisher owns. */
+    readonly entityId: string,
+    client: LasaClient
+  ) {
+    this.controls = new EntityControls(client, entityId);
+  }
+
+  /** Silences the pair (this entity, `other`) in both directions (profile §6). */
+  mute(other: string): Promise<void> {
+    return this.controls.mute(other);
+  }
+  unmute(other: string): Promise<void> {
+    return this.controls.unmute(other);
+  }
+  /** Hear `other` (and the other solo'd entities) only; wins over mutes. */
+  solo(other: string): Promise<void> {
+    return this.controls.solo(other);
+  }
+  unsolo(other: string): Promise<void> {
+    return this.controls.unsolo(other);
+  }
+  /** Sets one runtime attribute at a dotted path. */
+  setAttr(path: string, value: BaseValue): Promise<void> {
+    return this.controls.setAttr(path, value);
+  }
+  clearAttr(path: string): Promise<void> {
+    return this.controls.clearAttr(path);
+  }
+  /** Sets several attributes as one group. */
+  setAttrs(attrs: Record<string, BaseValue>): Promise<void> {
+    return this.controls.setAttrs(attrs);
+  }
 
   /**
    * Sends one mono-object packet with the gapless sequence number as
@@ -126,9 +186,14 @@ export class EntityPublisher {
   }
 }
 
+/**
+ * A connection to one LASA space: capture, playout, presence and
+ * state over a single WebTransport session. Create one with
+ * {@link LasaClient.connect}; end it with {@link LasaClient.close}.
+ */
 export class LasaClient {
   private publishers = new Map<string, EntityPublisher>();
-  private publisherWaiters = new Map<string, ((p: EntityPublisher) => void)[]>();
+  private publisherWaiters = new Map<string, { resolve: (p: EntityPublisher) => void; reject: (e: Error) => void }[]>();
   private readonly subgroups = new SubgroupRouter();
   private readonly datagrams = new DatagramRouter();
   private readonly session: WorkerSessionProxy;
@@ -146,6 +211,17 @@ export class LasaClient {
    * default unless the caller passes qualityLevel explicitly.
    */
   private entityDefs = new Map<string, LasaEntity>();
+  private closing: Promise<void> | null = null;
+  // Slots reserved synchronously by playSink/startCapture so two
+  // overlapping calls for one entity cannot both pass the "already
+  // running" guard while the first is still awaiting (B1).
+  private sinkStarting = new Set<string>();
+  private captureStarting = new Set<string>();
+  /**
+   * Space-wide base-profile operations — moderation, channel policy,
+   * rendering (see {@link SpaceControls}). Role-gated by the server.
+   */
+  readonly space: SpaceControls;
 
   private constructor(
     private readonly transport: WorkerTransport,
@@ -154,6 +230,7 @@ export class LasaClient {
     private readonly debug: boolean
   ) {
     this.session = new WorkerSessionProxy(transport);
+    this.space = new SpaceControls(this);
   }
 
   /**
@@ -162,10 +239,14 @@ export class LasaClient {
    * subscribes them back.
    */
   static async connect(opts: LasaClientOptions): Promise<LasaClient> {
-    const transport = WorkerTransport.spawn();
+    const transport = WorkerTransport.spawn(createMoqWorker());
     const client = new LasaClient(transport, opts.spaceId, opts.clientId, opts.debug ?? false);
     for (const e of opts.entities ?? []) client.entityDefs.set(e.id, e);
 
+    // The worker reports every transport close, including one that ends
+    // a rejected handshake. That case is connect()'s to surface (as a
+    // LasaRejectionError), so onClosed is gated on a completed connect.
+    let connected = false;
     transport.setEvents({
       // The server subscribes our source tracks after SETUP; the worker
       // auto-OKs each and forwards the alias it assigned — that alias IS
@@ -173,7 +254,7 @@ export class LasaClient {
       // handled inside the worker, where its stream lives.)
       onIncomingSubscribe: ({ namespace, trackAlias }) => {
         if (namespace.length === 4 && namespace[1] === 'entity' && namespace[3] === 'source') {
-          client.resolvePublisher(namespace[2]!, new EntityPublisher(transport, trackAlias));
+          client.resolvePublisher(namespace[2]!, new EntityPublisher(transport, trackAlias, namespace[2]!, client));
         }
       },
       onDatagram: ({ trackAlias, groupId, objectId, payload }) => {
@@ -198,6 +279,7 @@ export class LasaClient {
         });
       },
       onTransportClosed: (e) => {
+        if (!connected) return;
         opts.onClosed?.({ closeCode: e.closeCode, reason: e.reason });
       },
     });
@@ -214,6 +296,7 @@ export class LasaClient {
       await transport.close().catch(() => {});
       throw e;
     }
+    connected = true;
     return client;
   }
 
@@ -222,7 +305,7 @@ export class LasaClient {
    * (upstream layout — no seqs). The worker waits for the server's
    * subscribe of the state source if it has not landed yet.
    */
-  async writeState(...msgs: StateMessage[]): Promise<void> {
+  async writeState(...msgs: UpstreamStateMessage[]): Promise<void> {
     await this.transport.writeState(msgs.map((m) => encodeStateMessage(m, 'upstream')));
   }
 
@@ -249,8 +332,17 @@ export class LasaClient {
     const waiters = this.publisherWaiters.get(entityId);
     if (waiters) {
       this.publisherWaiters.delete(entityId);
-      for (const w of waiters) w(pub);
+      for (const w of waiters) w.resolve(pub);
     }
+  }
+
+  /**
+   * Owner-scope base-profile controls for one of this connection's
+   * entities, without waiting for its publisher. The same operations
+   * are on {@link EntityPublisher}.
+   */
+  controls(entityId: string): EntityControls {
+    return new EntityControls(this, entityId);
   }
 
   /**
@@ -261,15 +353,29 @@ export class LasaClient {
     const existing = this.publishers.get(entityId);
     if (existing) return Promise.resolve(existing);
     return new Promise((resolve, reject) => {
-      const timer = setTimeout(
-        () => reject(new Error(`server did not subscribe entity ${entityId} source in ${timeoutMs}ms`)),
-        timeoutMs
-      );
+      const waiter = {
+        resolve: (p: EntityPublisher) => {
+          clearTimeout(timer);
+          resolve(p);
+        },
+        reject: (e: Error) => {
+          clearTimeout(timer);
+          reject(e);
+        },
+      };
+      const timer = setTimeout(() => {
+        // Leave the list too, or a polled entity the server never
+        // subscribes grows the waiter list without bound.
+        const list = this.publisherWaiters.get(entityId);
+        if (list) {
+          const i = list.indexOf(waiter);
+          if (i >= 0) list.splice(i, 1);
+          if (list.length === 0) this.publisherWaiters.delete(entityId);
+        }
+        reject(new Error(`server did not subscribe entity ${entityId} source in ${timeoutMs}ms`));
+      }, timeoutMs);
       const list = this.publisherWaiters.get(entityId) ?? [];
-      list.push((p) => {
-        clearTimeout(timer);
-        resolve(p);
-      });
+      list.push(waiter);
       this.publisherWaiters.set(entityId, list);
     });
   }
@@ -282,9 +388,18 @@ export class LasaClient {
    * One player per entity sink (multi-entity: call per entity).
    */
   async playSink(entityId: string, format: SinkFormat, opts: SinkPlayerOptions = {}): Promise<SinkPlayer> {
-    if (this.sinkPlayers.has(entityId)) {
+    if (this.sinkPlayers.has(entityId) || this.sinkStarting.has(entityId)) {
       throw new Error(`sink for entity ${entityId} is already playing`);
     }
+    this.sinkStarting.add(entityId);
+    try {
+      return await this.playSinkInner(entityId, format, opts);
+    } finally {
+      this.sinkStarting.delete(entityId);
+    }
+  }
+
+  private async playSinkInner(entityId: string, format: SinkFormat, opts: SinkPlayerOptions): Promise<SinkPlayer> {
     // The entity's declared quality and redundancy default the playout
     // buffer's level and FEC floor (path-scoped declarations,
     // lasa-core.md §4.2): the declaration asked the space to emit
@@ -327,11 +442,24 @@ export class LasaClient {
    * Opus encode → mono-object datagrams stamped with the FRESHEST pose
    * from the shared cell (update it via {@link CaptureHandle.setPose}).
    * Per-entity: call once per publishing entity, sharing one context.
+   *
+   * The source's AudioContext MUST run at 48 kHz (lasa-core.md §5: Opus,
+   * 48 kHz, 5 ms) — construct it with `new AudioContext({ sampleRate:
+   * 48000 })`; any other rate is refused. Frames are always 5 ms.
    */
   async startCapture(entityId: string, opts: CaptureOptions): Promise<CaptureHandle> {
-    if (this.capturePipelines.has(entityId)) {
+    if (this.capturePipelines.has(entityId) || this.captureStarting.has(entityId)) {
       throw new Error(`capture for entity ${entityId} is already running`);
     }
+    this.captureStarting.add(entityId);
+    try {
+      return await this.startCaptureInner(entityId, opts);
+    } finally {
+      this.captureStarting.delete(entityId);
+    }
+  }
+
+  private async startCaptureInner(entityId: string, opts: CaptureOptions): Promise<CaptureHandle> {
     const pipeline = await CapturePipeline.create(opts.source, { channelIndex: opts.channelIndex });
     try {
       await this.transport.setCaptureTrack(entityId, pipeline.getHandoff(), {
@@ -339,7 +467,10 @@ export class LasaClient {
         sampleRate: pipeline.sampleRate,
         numberOfChannels: 1,
         bitrate: opts.bitrate ?? 64000,
-        frameDurationUs: Math.round((opts.frameDurationMs ?? 5) * 1000),
+        // The LASA frame is 5 ms, always (lasa-core.md §5): the server
+        // extends timestamps by seq × 5 ms and redundancy offsets are
+        // multiples of it. Not a caller option.
+        frameDurationUs: 5000,
       });
     } catch (e) {
       pipeline.dispose();
@@ -396,11 +527,13 @@ export class LasaClient {
       format
     );
     this.datagrams.register(trackAlias, (payload, _alias, groupId) => {
+      let pkt: SinkPacket;
       try {
-        handler(groupId, parseSink(payload));
+        pkt = parseSink(payload);
       } catch {
-        // Discard rule: unknown flags / malformed packets are dropped.
+        return; // Discard rule: unknown flags / malformed packets are dropped.
       }
+      handler(groupId, pkt); // the consumer's own faults are theirs to see
     });
   }
 
@@ -413,11 +546,13 @@ export class LasaClient {
   async subscribePresence(handler: PresenceHandler): Promise<void> {
     const { trackAlias } = await this.transport.subscribe(presenceNamespace(this.spaceId), 'presence');
     this.datagrams.register(trackAlias, (payload, _alias, groupId) => {
+      let msg: PresenceKeyframe | PresenceDelta;
       try {
-        handler(groupId, parsePresence(payload));
+        msg = parsePresence(payload);
       } catch {
-        // Discard rule.
+        return; // Discard rule.
       }
+      handler(groupId, msg);
     });
   }
 
@@ -433,7 +568,20 @@ export class LasaClient {
     return roster;
   }
 
+  /**
+   * Ends the session: stops every capture and sink, stops the state
+   * sync, and tears down the worker and transport. Idempotent.
+   */
   async close(): Promise<void> {
+    // Idempotent: the first call terminates the worker, so a second
+    // request to it would never be answered. Repeat calls share the
+    // first's promise.
+    if (this.closing) return this.closing;
+    this.closing = this.closeOnce();
+    return this.closing;
+  }
+
+  private async closeOnce(): Promise<void> {
     this.stateSync?.stop();
     // Main-side graphs first; the worker close flushes encoders and
     // tears down decoders with the transport.
@@ -445,6 +593,13 @@ export class LasaClient {
       await player.dispose().catch(() => {});
     }
     this.sinkPlayers.clear();
+    this.sinkIngress.clear();
+    this.datagrams.clear();
+    // Pending entity() calls fail now with the real reason, not after
+    // their timeout with "server did not subscribe".
+    const waiters = [...this.publisherWaiters.values()].flat();
+    this.publisherWaiters.clear();
+    for (const w of waiters) w.reject(new Error('client closed'));
     await this.transport.close();
   }
 }

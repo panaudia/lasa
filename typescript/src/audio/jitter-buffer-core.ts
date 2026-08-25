@@ -48,7 +48,7 @@
  */
 
 /**
- * Configuration for {@link JitterBufferCore}. All frame/latency fields are
+ * Configuration for `JitterBufferCore`. All frame/latency fields are
  * in **samples** (frames) — the browser knows these concretely: R = the
  * 128-sample worklet quantum, W = the server's 240-sample Opus frame. This
  * is the Go config's exact-count form (`WriterFrames`/`ReaderFrames`, added
@@ -80,7 +80,7 @@ export interface JitterBufferCoreConfig {
   qualityLevel?: number;
   /**
    * Declared minimum operating latency, samples — e.g. the FEC floor
-   * ({@link fecFloor}). Composes with the quality level's floor and the
+   * (`fecFloor`). Composes with the quality level's floor and the
    * width-derived setpoint by MAX (floors compose; they never stack —
    * mirrors Go `engine.AddSource`).
    */
@@ -99,7 +99,7 @@ export interface JitterBufferCoreConfig {
    * live in shared memory. Provide a `SharedArrayBuffer`-backed interleaved
    * `Float32Array` of exactly `capacity*nc` and a length-1 `BigInt64Array`
    * for the (atomic) writePos; `readPos` stays reader-owned (plain). Size
-   * them with {@link computeJitterCapacity}. Omit both for single-thread mode.
+   * them with `computeJitterCapacity`. Omit both for single-thread mode.
    */
   sharedStorage?: Float32Array;
   /** SAB-backed length-1 BigInt64Array holding the atomic cumulative writePos (frames). */

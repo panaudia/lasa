@@ -45,8 +45,32 @@ export interface CapturePipelineOptions {
 
 // addModule() registers the processor name context-wide; a second call
 // for the same context must be skipped (re-registration throws).
-const workletLoaded = new WeakSet<BaseAudioContext>();
+/**
+ * One addModule per context, keyed by the in-flight promise rather than
+ * a done flag: two concurrent create() calls on one context (the
+ * documented stereo-source usage) must share the load, or the second
+ * registerProcessor throws on the duplicate name.
+ */
+const workletLoading = new WeakMap<BaseAudioContext, Promise<void>>();
 
+function ensureCaptureWorklet(ctx: BaseAudioContext): Promise<void> {
+  let p = workletLoading.get(ctx);
+  if (!p) {
+    const url = createCaptureWorkletUrl();
+    p = ctx.audioWorklet.addModule(url).finally(() => URL.revokeObjectURL(url));
+    // A failed load must not poison the context for later attempts.
+    p.catch(() => workletLoading.delete(ctx));
+    workletLoading.set(ctx, p);
+  }
+  return p;
+}
+
+/**
+ * The page half of an entity's capture: a worklet writing a shared
+ * ring the transport worker encodes from, plus the shared pose cell.
+ * {@link LasaClient.startCapture} builds one; build directly for a
+ * custom graph.
+ */
 export class CapturePipeline {
   /** Quanta dropped by the capture ring (worker stalled) — upstream gaps. */
   private overflowCount = 0;
@@ -79,17 +103,18 @@ export class CapturePipeline {
       );
     }
     const ctx = source.context;
+    // The wire format is Opus at 48 kHz (lasa-core.md §5). The encoder
+    // is configured at the context's rate, so anything else would ship
+    // non-conformant audio (or rely on a browser's silent resampling).
+    if (ctx.sampleRate !== 48000) {
+      throw new MoqClientError(
+        `Capture requires a 48 kHz AudioContext (got ${ctx.sampleRate} Hz): construct it with new AudioContext({ sampleRate: 48000 })`,
+        'SAMPLE_RATE'
+      );
+    }
     const channelIndex = options.channelIndex ?? 0;
 
-    if (!workletLoaded.has(ctx)) {
-      const url = createCaptureWorkletUrl();
-      try {
-        await ctx.audioWorklet.addModule(url);
-      } finally {
-        URL.revokeObjectURL(url);
-      }
-      workletLoaded.add(ctx);
-    }
+    await ensureCaptureWorklet(ctx);
 
     const capacityFrames = captureCapacityFrames();
     const ringViews = {
@@ -169,6 +194,13 @@ export class CapturePipeline {
 
   /** Remove this pipeline's nodes (the caller's source/context survive). */
   dispose(): void {
+    // Tell the processor to return false from its next process() call;
+    // disconnecting alone leaves it running for the context's lifetime.
+    try {
+      this.workletNode.port.postMessage({ type: 'stop' });
+    } catch {
+      // port already closed
+    }
     try {
       this.source.disconnect(this.splitter);
     } catch {

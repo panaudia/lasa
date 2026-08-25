@@ -21,6 +21,8 @@ import {
   MessageBuilder,
   wrapWithLengthFrame,
   decodeVarint,
+  decodeString,
+  encodeParams,
   type Kvp,
 } from './moq-transport.js';
 import {
@@ -29,6 +31,8 @@ import {
   SubscriptionError,
   AnnouncementError,
   getMoqErrorMessage,
+  getSubscribeErrorMessage,
+  isSubscribeAuthError,
 } from './errors.js';
 
 export class MoqSession {
@@ -171,10 +175,9 @@ export class MoqSession {
       return subscribeId;
     } else if (type === MoqMessageType.SUBSCRIBE_ERROR) {
       const error = parseSubscribeError(content, 0);
-      const errorMessage = `${error.reasonPhrase} (${getMoqErrorMessage(error.errorCode)})`;
+      const errorMessage = `${error.reasonPhrase} (${getSubscribeErrorMessage(error.errorCode)})`;
 
-      // Check if this is an authentication error
-      if (error.errorCode === 0x02 || error.errorCode === 0x403) {
+      if (isSubscribeAuthError(error.errorCode)) {
         throw new AuthenticationError(errorMessage, error.errorCode, { namespace, trackName });
       }
 
@@ -209,27 +212,31 @@ export class MoqSession {
   private async waitForMessage(expectedTypes: number[]): Promise<{ type: number; content: Uint8Array }> {
     if (this.messageLoopRunning) {
       return new Promise((resolve, reject) => {
-        const timer = setTimeout(
-          () =>
-            reject(
-              new ProtocolError(
-                `Timeout waiting for message types: ${expectedTypes.map(t => '0x' + t.toString(16)).join(', ')}`,
-                0
-              )
-            ),
-          10_000
-        );
-        this.pendingResponses.push({
+        const entry = {
           types: expectedTypes,
-          resolve: (m) => {
+          resolve: (m: { type: number; content: Uint8Array }) => {
             clearTimeout(timer);
             resolve(m);
           },
-          reject: (e) => {
+          reject: (e: Error) => {
             clearTimeout(timer);
             reject(e);
           },
-        });
+        };
+        // On timeout the entry must leave the queue too, or it stays
+        // FIFO-first and swallows the next reply of its type, timing
+        // out every later request of that kind for the session's life.
+        const timer = setTimeout(() => {
+          const i = this.pendingResponses.indexOf(entry);
+          if (i >= 0) this.pendingResponses.splice(i, 1);
+          reject(
+            new ProtocolError(
+              `Timeout waiting for message types: ${expectedTypes.map(t => '0x' + t.toString(16)).join(', ')}`,
+              0
+            )
+          );
+        }, 10_000);
+        this.pendingResponses.push(entry);
       });
     }
     const maxAttempts = 20; // Prevent infinite loops
@@ -262,7 +269,7 @@ export class MoqSession {
         await this.sendAnnounceOk(content);
         break;
 
-      case 0x11: // SUBSCRIBE_ANNOUNCES
+      case MoqMessageType.SUBSCRIBE_ANNOUNCES:
         // Server wants to subscribe to our announcements - respond with OK
         this.log('Received SUBSCRIBE_ANNOUNCES from server, sending OK');
         await this.sendSubscribeAnnouncesOk(content);
@@ -274,7 +281,7 @@ export class MoqSession {
         await this.handleIncomingSubscribe(content);
         break;
 
-      case 0x0b: {
+      case MoqMessageType.PUBLISH_DONE: {
         // PUBLISH_DONE: RequestID, StatusCode, StreamCount, Reason.
         // The request id is the subscribe id we sent (divergence 4).
         const rid = decodeVarint(content, 0);
@@ -304,25 +311,16 @@ export class MoqSession {
    * SUBSCRIBE wire format: RequestID, Namespace, TrackName, Priority,
    *   GroupOrder, Forward, FilterType, Parameters
    *
-   * SUBSCRIBE_OK wire format: RequestID, TrackAlias, Expires, GroupOrder,
-   *   ContentExists, [LargestLocation], Parameters
+   * SUBSCRIBE_OK wire format (draft-16): RequestID, TrackAlias, Parameters
+   *   (Expires / GroupOrder / LargestLocation travel as parameters)
    */
   private async handleIncomingSubscribe(content: Uint8Array): Promise<void> {
     let pos = 0;
 
     // Request ID (varint)
-    const requestIdByte = content[pos]!;
-    let requestId: number;
-    if (requestIdByte < 64) {
-      requestId = requestIdByte;
-      pos += 1;
-    } else if ((requestIdByte & 0xc0) === 0x40) {
-      requestId = ((requestIdByte & 0x3f) << 8) | content[pos + 1]!;
-      pos += 2;
-    } else {
-      requestId = requestIdByte & 0x3f;
-      pos += 1;
-    }
+    const rid = decodeVarint(content, pos);
+    const requestId = Number(rid.value);
+    pos += rid.bytesRead;
 
     // Parse namespace (directly after RequestID — no TrackAlias in SUBSCRIBE)
     const namespace = this.parseNamespaceFromContent(content, pos);
@@ -332,15 +330,14 @@ export class MoqSession {
     const trackAlias = this.nextTrackAlias++;
     this.log(`Server subscribing to: ${namespace.join('/')}, assigning trackAlias=${trackAlias}`);
 
-    // Send SUBSCRIBE_OK with TrackAlias
-    // Format: RequestID, TrackAlias, Expires, GroupOrder(1 byte), ContentExists(1 byte), Parameters
+    // Send SUBSCRIBE_OK with TrackAlias. Draft-16 body: RequestID,
+    // TrackAlias, parameter list (no Expires / GroupOrder / ContentExists
+    // fields; absent parameters mean no expiry, default order, no
+    // content yet).
     const builder = new MessageBuilder();
     builder.writeVarint(requestId);    // Request ID
     builder.writeVarint(trackAlias);   // Track Alias (assigned by us)
-    builder.writeVarint(0);            // Expires (0 = no expiry)
-    builder.writeRaw(new Uint8Array([0x01])); // Group order (1 byte: ascending)
-    builder.writeRaw(new Uint8Array([0x00])); // Content exists (1 byte: false)
-    builder.writeVarint(0);            // Number of parameters
+    encodeParams(builder, []);
 
     const msg = wrapWithLengthFrame(MoqMessageType.SUBSCRIBE_OK, builder.build());
     await this.writer!.write(msg);
@@ -373,47 +370,15 @@ export class MoqSession {
   private parseNamespaceFromContent(content: Uint8Array, startPos: number): string[] {
     let pos = startPos;
     const namespace: string[] = [];
-
     if (pos >= content.length) return namespace;
 
-    // Read namespace tuple length
-    const firstByte = content[pos]!;
-    let nsLength: number;
-
-    if (firstByte < 64) {
-      nsLength = firstByte;
-      pos += 1;
-    } else if ((firstByte & 0xc0) === 0x40) {
-      nsLength = ((firstByte & 0x3f) << 8) | content[pos + 1]!;
-      pos += 2;
-    } else {
-      nsLength = firstByte & 0x3f;
-      pos += 1;
+    const count = decodeVarint(content, pos);
+    pos += count.bytesRead;
+    for (let i = 0n; i < count.value && pos < content.length; i++) {
+      const part = decodeString(content, pos);
+      namespace.push(part.value);
+      pos += part.bytesRead;
     }
-
-    // Read each namespace part
-    for (let i = 0; i < nsLength && pos < content.length; i++) {
-      const partLenByte = content[pos]!;
-      let partLen: number;
-
-      if (partLenByte < 64) {
-        partLen = partLenByte;
-        pos += 1;
-      } else if ((partLenByte & 0xc0) === 0x40) {
-        partLen = ((partLenByte & 0x3f) << 8) | content[pos + 1]!;
-        pos += 2;
-      } else {
-        partLen = partLenByte & 0x3f;
-        pos += 1;
-      }
-
-      if (pos + partLen <= content.length) {
-        const part = new TextDecoder().decode(content.slice(pos, pos + partLen));
-        namespace.push(part);
-        pos += partLen;
-      }
-    }
-
     return namespace;
   }
 
@@ -446,7 +411,7 @@ export class MoqSession {
     const builder = new MessageBuilder();
     builder.writeVarint(requestId);
 
-    const msg = wrapWithLengthFrame(0x12, builder.build()); // 0x12 = SUBSCRIBE_ANNOUNCES_OK
+    const msg = wrapWithLengthFrame(MoqMessageType.SUBSCRIBE_ANNOUNCES_OK, builder.build());
     await this.writer!.write(msg);
   }
 
@@ -454,17 +419,7 @@ export class MoqSession {
    * Parse RequestID (first varint) from message content
    */
   private parseRequestId(content: Uint8Array): number {
-    const firstByte = content[0]!;
-    if (firstByte < 64) {
-      return firstByte;
-    } else if ((firstByte & 0xc0) === 0x40) {
-      return ((firstByte & 0x3f) << 8) | content[1]!;
-    } else if ((firstByte & 0xc0) === 0x80) {
-      return ((firstByte & 0x3f) << 24) | (content[1]! << 16) | (content[2]! << 8) | content[3]!;
-    } else {
-      // 8-byte varint - for simplicity, just return the lower 32 bits
-      return (content[4]! << 24) | (content[5]! << 16) | (content[6]! << 8) | content[7]!;
-    }
+    return Number(decodeVarint(content, 0).value);
   }
 
   /**
@@ -544,7 +499,14 @@ export class MoqSession {
           pending!.resolve({ type, content });
           continue;
         }
-        await this.handleUnexpectedMessage(type, content);
+        try {
+          await this.handleUnexpectedMessage(type, content);
+        } catch (error) {
+          // A handler fault (user callback, failed reply write) is that
+          // message's problem, not the control plane's: log and keep
+          // reading. Only a read failure ends the loop.
+          this.log('Handler error for message type 0x' + type.toString(16) + ':', (error as Error).message);
+        }
       } catch (error) {
         // Stream closed or error - exit loop
         this.log('Message processing stopped:', (error as Error).message);
@@ -554,6 +516,9 @@ export class MoqSession {
         break;
       }
     }
+    // No reader any more: later waiters fail fast on the inline path
+    // rather than queueing for a loop that is gone.
+    this.messageLoopRunning = false;
   }
 
   /**

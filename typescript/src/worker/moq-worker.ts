@@ -59,6 +59,10 @@ let closePosted = false;
 let stateSourceAlias: number | null = null;
 let stateAliasWaiters: (() => void)[] = [];
 let stateWriter: SubgroupWriter | null = null;
+// The in-flight createSendStream() for the state writer: every
+// writeState awaits the same one, so overlapping calls cannot open two
+// streams for the one subgroup (B2).
+let stateWriterPromise: Promise<SubgroupWriter> | null = null;
 let stateObjId = 0n;
 
 // Entity source aliases (the server's subscribe-backs), for capture
@@ -88,11 +92,14 @@ function waitForEntityAlias(entityId: string, timeoutMs = 5000): Promise<number>
 // pumped on the worklet's Atomics wake, framing mono-object datagrams
 // with the SAB-fresh pose.
 interface Capture {
+  entityId: string;
   encoder: CaptureEncoder;
   signal: Int32Array;
   running: boolean;
 }
 const captures = new Map<string, Capture>();
+/** Entities whose setCaptureTrack is between its awaits (B1). */
+const capturesStarting = new Set<string>();
 
 // Sink playout (step 3): per-alias decode straight into the SAB jitter
 // ring the playout worklet reads. Multiple sinks (multi-entity) each
@@ -221,7 +228,7 @@ async function handleConnect(cmd: Extract<MainToWorker, { type: 'connect' }>): P
   startSubgroupAcceptLoop();
 }
 
-/** Read datagrams and forward each (step 2: no audio divert yet). */
+/** Read datagrams: sink aliases decode here, everything else is forwarded to main. */
 function startDatagramLoop(): void {
   const readable = conn!.takeDatagramReadableForWorker();
   if (!readable) throw new Error('no datagram readable (not connected)');
@@ -323,6 +330,13 @@ async function handleSubscribe(cmd: Extract<MainToWorker, { type: 'subscribe' }>
 
 /** Feed one released frame to the decoder at its positional timestamp. */
 function feedDecoder(trackAlias: number, sink: SinkTrack, seq: bigint, data: Uint8Array): void {
+  if (sink.decoder.state !== 'configured') {
+    // Dead or closing decoder: every decode() would throw and post a
+    // notice per datagram (~200/s). The error callback has already
+    // reported and cleared the track; count and drop quietly.
+    sink.decodeErrors++;
+    return;
+  }
   try {
     sink.decoder.decode(
       new EncodedAudioChunk({
@@ -455,7 +469,16 @@ function handleSetSinkTrack(cmd: SetSinkTrackCommand): void {
           audioData.close();
         }
       },
-      error: (e: DOMException) => post({ type: 'notice', event: 'decode-error', detail: String(e) }),
+      error: (e: DOMException) => {
+        // Fatal for this decoder (state is now 'closed'): report once
+        // and clear the track so its datagrams stop reaching it.
+        post({
+          type: 'notice',
+          event: 'decode-error',
+          detail: `alias ${cmd.trackAlias}: decoder failed, sink track cleared: ${String(e)}`,
+        });
+        if (sinkTracks.get(cmd.trackAlias) === track) clearSinkTrack(cmd.trackAlias);
+      },
     }),
   };
   track.decoder.configure({
@@ -487,6 +510,18 @@ function clearSinkTrack(trackAlias: number): void {
  * proven §6.1 loop — falls back to a ~2 ms poll if waitAsync is absent).
  */
 async function handleSetCaptureTrack(cmd: SetCaptureTrackCommand): Promise<void> {
+  if (capturesStarting.has(cmd.entityId)) {
+    throw new Error(`capture for entity ${cmd.entityId} is already starting`);
+  }
+  capturesStarting.add(cmd.entityId);
+  try {
+    await setCaptureTrackInner(cmd);
+  } finally {
+    capturesStarting.delete(cmd.entityId);
+  }
+}
+
+async function setCaptureTrackInner(cmd: SetCaptureTrackCommand): Promise<void> {
   if (!conn) throw new Error('not connected');
   await stopCapture(cmd.entityId); // replace any prior pipeline for this entity
   const trackAlias = await waitForEntityAlias(cmd.entityId);
@@ -548,7 +583,7 @@ async function handleSetCaptureTrack(cmd: SetCaptureTrackCommand): Promise<void>
     },
   });
 
-  const capture: Capture = { encoder, signal: cmd.sharedSignal, running: true };
+  const capture: Capture = { entityId: cmd.entityId, encoder, signal: cmd.sharedSignal, running: true };
   captures.set(cmd.entityId, capture);
   startCaptureLoop(capture);
 }
@@ -567,7 +602,18 @@ function startCaptureLoop(capture: Capture): void {
   void (async () => {
     let seen = Atomics.load(signal, 0);
     while (capture.running) {
-      enc.pump(); // drain everything available → encode (Opus does the framing)
+      try {
+        enc.pump(); // drain everything available → encode (Opus does the framing)
+      } catch (e) {
+        // Once the AudioEncoder has errored every encode() throws, so
+        // the loop cannot continue. Report once and take the capture
+        // down so `captures` does not keep listing it as running.
+        post({ type: 'notice', event: 'encode-error', detail: `${capture.entityId}: ${String(e)}` });
+        if (captures.get(capture.entityId) === capture) {
+          await stopCapture(capture.entityId).catch(() => {});
+        }
+        return;
+      }
       if (waitAsync) {
         const r = waitAsync(signal, 0, seen);
         if (r.async) await r.value;
@@ -605,11 +651,20 @@ async function handleWriteState(cmd: Extract<MainToWorker, { type: 'writeState' 
       });
     });
   }
-  if (!stateWriter) {
-    stateWriter = new SubgroupWriter(await conn.createSendStream(), stateSourceAlias!, 0n, 0n, 0);
+  if (!stateWriterPromise) {
+    const alias = stateSourceAlias!;
+    const p = conn.createSendStream().then((stream) => {
+      stateWriter = new SubgroupWriter(stream, alias, 0n, 0n, 0);
+      return stateWriter;
+    });
+    p.catch(() => {
+      if (stateWriterPromise === p) stateWriterPromise = null;
+    });
+    stateWriterPromise = p;
   }
+  const writer = await stateWriterPromise;
   for (const payload of cmd.payloads) {
-    await stateWriter.writeObject(stateObjId++, payload);
+    await writer.writeObject(stateObjId++, payload);
   }
 }
 
@@ -624,6 +679,7 @@ async function handleClose(): Promise<void> {
     }
     stateWriter = null;
   }
+  stateWriterPromise = null;
   if (session) {
     await session.close();
     session = null;

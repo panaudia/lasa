@@ -118,7 +118,8 @@ export type SinkStatsListener = (
 
 /** One buffer discontinuity, timestamped at receipt on main. */
 export interface PlayoutEvent {
-  kind: PlayoutEventMessage['kind'];
+  /** A buffer discontinuity kind, or `processor-error` (see {@link SinkPlayer.getProcessorError}). */
+  kind: PlayoutEventMessage['kind'] | 'processor-error';
   fillFrames: number;
   /** Worklet read count at the event (2.667 ms per read at 48 kHz). */
   reads: number;
@@ -128,12 +129,19 @@ export interface PlayoutEvent {
 
 const EVENT_RING_CAP = 500;
 
+/**
+ * Plays one sink track: the transport worker decodes into a shared
+ * jitter ring, and an `AudioWorklet` renders it. Obtain one from
+ * {@link LasaClient.playSink}, or build one directly with
+ * {@link SinkPlayer.create} for a custom graph.
+ */
 export class SinkPlayer {
   private lastSnapshot: JitterBufferSnapshot | null = null;
   private lastTapB: StereoMeterReport | null = null;
   private jbufLogCount = 0;
   private statsListener: SinkStatsListener | null = null;
   private events: PlayoutEvent[] = [];
+  private processorError: Error | null = null;
 
   private constructor(
     private readonly audioContext: AudioContext,
@@ -146,6 +154,14 @@ export class SinkPlayer {
       Pick<SinkPlayerOptions, 'sampleRate' | 'channelCount' | 'writerFrameSamples' | 'redundancy' | 'debug'>
     >
   ) {
+    // A throw inside the processor leaves the node permanently silent with
+    // no other signal. Fail loudly: record it, log it, post an event.
+    workletNode.onprocessorerror = () => {
+      this.processorError = new Error('playout worklet processor error (output is now silent)');
+      console.error('[SinkPlayer]', this.processorError.message);
+      this.events.push({ kind: 'processor-error', fillFrames: 0, reads: 0, atMs: performance.now() });
+      if (this.events.length > EVENT_RING_CAP) this.events.shift();
+    };
     workletNode.port.onmessage = (e: MessageEvent) => {
       const msg = e.data as PlayoutStatsMessage | PlayoutEventMessage;
       if (msg && msg.type === 'stats') {
@@ -177,10 +193,17 @@ export class SinkPlayer {
    * Each is an audible-artefact candidate: underrun = silence gap,
    * overrun/lap = snap, insert/drop = ±1 splice.
    */
+  /** Set once the worklet processor has thrown; the player renders silence from then on. */
+  getProcessorError(): Error | null {
+    return this.processorError;
+  }
+
+  /** Buffer discontinuities since the last {@link SinkPlayer.clearEvents}, oldest first (bounded ring). */
   getEvents(): PlayoutEvent[] {
     return [...this.events];
   }
 
+  /** Empties the event ring. */
   clearEvents(): void {
     this.events = [];
   }
@@ -294,10 +317,12 @@ export class SinkPlayer {
     }
   }
 
+  /** Output gain, 0 to 1 (linear). */
   setVolume(volume: number): void {
     this.gainNode.gain.value = Math.max(0, Math.min(1, volume));
   }
 
+  /** Current output gain. */
   getVolume(): number {
     return this.gainNode.gain.value;
   }
@@ -344,8 +369,10 @@ export class SinkPlayer {
     };
   }
 
+  /** Stops playout and closes this player's `AudioContext`. Idempotent. */
   async dispose(): Promise<void> {
     this.workletNode.port.onmessage = null;
+    this.workletNode.onprocessorerror = null;
     try {
       this.workletNode.disconnect();
     } catch {

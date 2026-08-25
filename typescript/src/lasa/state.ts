@@ -19,6 +19,7 @@ const CATCH_UP_LANE = 1n;
 export interface StateSyncOptions {
   /** Initial re-subscribe backoff in ms (doubles to a 5 s cap). */
   initialBackoffMs?: number;
+  /** Console logging of subscribe, instance and re-subscribe events. */
   debug?: boolean;
 }
 
@@ -33,9 +34,10 @@ export class StateSync {
   private wakeup: (() => void) | null = null;
   private endInstance: (() => void) | null = null;
   // Serializes store application: lane handlers are synchronous
-  // callbacks but the store's apply methods are async (persistence).
+  // callbacks but the store's apply methods are async.
   private chain: Promise<void> = Promise.resolve();
 
+  /** @internal Built by LasaClient. */
   constructor(
     private readonly session: StateSession,
     private readonly router: SubgroupRouter,
@@ -72,6 +74,7 @@ export class StateSync {
     }
   }
 
+  /** Ends the loop: unregisters the lane, ends the current instance, and wakes any backoff wait. */
   stop(): void {
     this.stopped = true;
     if (this.currentAlias !== null) {
@@ -97,6 +100,11 @@ export class StateSync {
       undefined,
       [{ type: SUBSCRIBE_PARAM_STATE, value: raw }]
     );
+    if (this.stopped) {
+      // stop() ran while SUBSCRIBE was in flight: nothing is registered
+      // yet, so register nothing; the instance lapses with the session.
+      return;
+    }
     const alias = this.session.getTrackAlias(subId);
     if (alias === undefined) throw new Error('no track alias after SUBSCRIBE_OK');
     this.log(`subscribed, id=${subId} alias=${alias}`);

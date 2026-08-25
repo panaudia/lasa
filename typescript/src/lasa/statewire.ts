@@ -49,6 +49,19 @@ export interface BeginMsg {
 }
 export type StateMessage = SetOp | ClearOp | GroupOp | FrontierMsg | BeginMsg;
 
+/**
+ * What a client writes: the same ops without the server-assigned seq
+ * (the upstream layout never encodes it). A downstream StateMessage is
+ * assignable here, so decoded messages can be re-published unchanged.
+ */
+export type UpstreamSetOp = Omit<SetOp, 'seq'> & { seq?: bigint };
+export type UpstreamClearOp = Omit<ClearOp, 'seq'> & { seq?: bigint };
+export interface UpstreamGroupOp {
+  kind: 'group';
+  ops: (UpstreamSetOp | UpstreamClearOp)[];
+}
+export type UpstreamStateMessage = UpstreamSetOp | UpstreamClearOp | UpstreamGroupOp | FrontierMsg | BeginMsg;
+
 const MSG_SET = 1;
 const MSG_CLEAR = 2;
 const MSG_GROUP = 3;
@@ -87,13 +100,19 @@ function readVarint(data: Uint8Array, o: number): { value: bigint; next: number 
 
 // --- state messages --------------------------------------------------------
 
-export function encodeStateMessage(m: StateMessage, dir: StateDirection): Uint8Array {
+export function encodeStateMessage(m: UpstreamStateMessage, dir: StateDirection): Uint8Array {
   const parts: number[] = [];
   appendStateMessage(parts, m, dir, true);
   return new Uint8Array(parts);
 }
 
-function appendStateMessage(parts: number[], m: StateMessage, dir: StateDirection, allowGroup: boolean): void {
+function appendSeq(parts: number[], seq: bigint | undefined, dir: StateDirection): void {
+  if (dir !== 'downstream') return;
+  if (seq === undefined) throw new MalformedError('seq is required downstream');
+  appendVarint(parts, seq);
+}
+
+function appendStateMessage(parts: number[], m: UpstreamStateMessage, dir: StateDirection, allowGroup: boolean): void {
   switch (m.kind) {
     case 'set': {
       if (!VALID_KEY_RE.test(m.key)) throw new MalformedError('invalid key');
@@ -104,7 +123,7 @@ function appendStateMessage(parts: number[], m: StateMessage, dir: StateDirectio
       for (const b of key) parts.push(b);
       appendVarint(parts, m.value.length);
       for (const b of m.value) parts.push(b);
-      if (dir === 'downstream') appendVarint(parts, m.seq);
+      appendSeq(parts, m.seq, dir);
       return;
     }
     case 'clear': {
@@ -113,7 +132,7 @@ function appendStateMessage(parts: number[], m: StateMessage, dir: StateDirectio
       const key = textEncoder.encode(m.key);
       appendVarint(parts, key.length);
       for (const b of key) parts.push(b);
-      if (dir === 'downstream') appendVarint(parts, m.seq);
+      appendSeq(parts, m.seq, dir);
       return;
     }
     case 'group': {
@@ -236,6 +255,7 @@ function parseOne(
 
 // --- subscribe params ------------------------------------------------------
 
+/** A resume position in the space's state history (`lasa-core.md` §6.6), earned by a completed catch-up. */
 export interface Cursor {
   epoch: Uint8Array; // EPOCH_SIZE
   seq: bigint;

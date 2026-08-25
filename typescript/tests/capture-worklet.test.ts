@@ -17,6 +17,7 @@ import { CaptureRing } from '../src/audio/capture-ring.js';
 
 interface WorkletProcessor {
   process(inputs: Float32Array[][]): boolean;
+  port: { onmessage: ((e: { data: unknown }) => void) | null; postMessage(m: unknown): void };
 }
 
 /** Shared SAB views + a consumer ring over the same memory, for round-trip checks. */
@@ -115,6 +116,16 @@ describe('capture worklet', () => {
     expect(p.process([])).toBe(true); // inputs = [] (no input)
     expect(Atomics.load(signal, 0)).toBe(0);
     expect(consumer.fillFrames()).toBe(0);
+  });
+
+  it('returns false from process() after a stop message, so the node can be collected', () => {
+    const { options, consumer } = makeShared(1, 1024);
+    const proc = instantiate(options);
+    expect(proc.process([quantum(128, 1, 0)])).toBe(true);
+    proc.port.onmessage!({ data: { type: 'stop' } });
+    expect(proc.process([quantum(128, 1, 1)])).toBe(false);
+    // Nothing written after stop: only the first quantum is in the ring.
+    expect(consumer.fillFrames()).toBe(128);
   });
 
   it('does not signal when the write overflows (consumer stalled)', () => {

@@ -50,7 +50,7 @@ export async function stateRun(url: string, certHashBase64?: string): Promise<St
     });
     step('a-connected');
 
-    const storeA = await Store.create('main', ['lasa.', 'app.']);
+    const storeA = await Store.create(['lasa.', 'app.']);
     const syncA = a.syncState(storeA);
     // Admission writes the entity marker + name; they arrive through
     // the first catch-up window (or live, either lane is legal).
@@ -78,7 +78,7 @@ export async function stateRun(url: string, certHashBase64?: string): Promise<St
       serverCertificateHashBase64: certHashBase64,
     });
     step('b-connected');
-    const storeB = await Store.create('main', ['lasa.']);
+    const storeB = await Store.create(['lasa.']);
     b.syncState(storeB);
     await until(() => storeB.get(ATTR_KEY) !== undefined, "B seeing A's attr");
     const bAttr = new TextDecoder().decode(storeB.get(ATTR_KEY)!);

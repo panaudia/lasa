@@ -94,8 +94,8 @@ class PlayoutRingProcessor extends AudioWorkletProcessor {
     this.nc = this.core.nc;
     this.statsEvery = opts.statsEvery || 94;
     this.readsSinceStats = 0;
-    // CLOCKTEST: true fill min/max across the stats window (every read, not the
-    // 250ms point-sample) — reveals the real sawtooth amplitude from reader-burst.
+    // True fill min/max across the stats window (every read, not the 250 ms
+    // point-sample): shows the real sawtooth amplitude from reader bursts.
     this.winFillMin = 1e9;
     this.winFillMax = 0;
     this.scratch = new Float32Array(128 * this.nc);
@@ -117,20 +117,21 @@ class PlayoutRingProcessor extends AudioWorkletProcessor {
   // Post any counter increments since the last read as events (rare —
   // a healthy stream posts none; this is not a per-read allocation path
   // in the steady state).
+  emitEvent(kind, n, fill) {
+    for (let i = 0; i < n; i++) {
+      this.port.postMessage({ type: 'event', kind, fillFrames: fill, reads: this.totalReads });
+    }
+  }
+
   postEvents() {
     const c = this.core;
     const fill = c.fillFrames();
-    const emit = (kind, n) => {
-      for (let i = 0; i < n; i++) {
-        this.port.postMessage({ type: 'event', kind, fillFrames: fill, reads: this.totalReads });
-      }
-    };
-    if (c.underruns !== this.prevUnderruns) emit('underrun', c.underruns - this.prevUnderruns);
-    if (c.overruns !== this.prevOverruns) emit('overrun', c.overruns - this.prevOverruns);
-    if (c.laps !== this.prevLaps) emit('lap', c.laps - this.prevLaps);
-    if (c.trims !== this.prevTrims) emit('trim', c.trims - this.prevTrims);
-    if (c.samplesInserted !== this.prevInserted) emit('insert', c.samplesInserted - this.prevInserted);
-    if (c.samplesDropped !== this.prevDropped) emit('drop', c.samplesDropped - this.prevDropped);
+    if (c.underruns !== this.prevUnderruns) this.emitEvent('underrun', c.underruns - this.prevUnderruns, fill);
+    if (c.overruns !== this.prevOverruns) this.emitEvent('overrun', c.overruns - this.prevOverruns, fill);
+    if (c.laps !== this.prevLaps) this.emitEvent('lap', c.laps - this.prevLaps, fill);
+    if (c.trims !== this.prevTrims) this.emitEvent('trim', c.trims - this.prevTrims, fill);
+    if (c.samplesInserted !== this.prevInserted) this.emitEvent('insert', c.samplesInserted - this.prevInserted, fill);
+    if (c.samplesDropped !== this.prevDropped) this.emitEvent('drop', c.samplesDropped - this.prevDropped, fill);
     this.prevUnderruns = c.underruns;
     this.prevOverruns = c.overruns;
     this.prevLaps = c.laps;

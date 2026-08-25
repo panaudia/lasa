@@ -1,12 +1,23 @@
 /**
  * The client half of the LASA state machinery (lasa-core.md §6.5–§6.6):
  * the local store, the catch-up window with the reference
- * apply-live-with-transient-tombstones strategy, and cursor persistence
- * honouring "never ahead of the persisted store" (invariant F7: no
- * cursor until the subscription's first catch-up frontier is applied).
+ * apply-live-with-transient-tombstones strategy, and the in-memory
+ * cursor honouring invariant F7 (no cursor until the subscription's
+ * first catch-up frontier is applied).
  *
- * Faithful port of Go `lasa/state/clientstore` — behavioural changes
- * belong there first.
+ * The cursor lives with the store, in memory, so a re-subscription
+ * within the store's lifetime — StateSync's own retries, or a new
+ * LasaClient handed the same Store — resumes with a delta. Nothing is
+ * persisted across page loads: a fresh page presents no cursor and
+ * takes a snapshot (§6.6 permits exactly this — a client that does not
+ * persist its store MUST NOT persist a cursor). Cross-load persistence
+ * is implemented in the Go reference (`clientstore.Persistence`) and
+ * deliberately not offered here yet (decision 2026-08-25: the
+ * atomicity contract is a footgun and the saving is one small
+ * snapshot; reopen when a real app's snapshot is big enough to notice).
+ *
+ * Port of Go `lasa/state/clientstore` minus persistence — behavioural
+ * changes belong there first.
  */
 
 import { MalformedError } from './wire.js';
@@ -23,44 +34,6 @@ import {
 export interface KV {
   value: Uint8Array;
   seq: bigint;
-}
-
-/** The persistable store state. */
-export interface Snapshot {
-  entries: Map<string, KV>;
-  cursor: Cursor | null;
-}
-
-/**
- * Stores the state and cursor ATOMICALLY — persisting a cursor ahead of
- * the store it describes silently loses ops forever. Keyed by space id:
- * a cursor earned in one space must never be presented to another. A
- * null Persistence makes the store ephemeral (a client that does not
- * persist its store MUST NOT persist a cursor — and then presents
- * nothing on reconnect).
- */
-export interface Persistence {
-  load(spaceId: string): Promise<Snapshot | null>;
-  save(spaceId: string, s: Snapshot): Promise<void>;
-}
-
-/**
- * An in-memory Persistence, for tests and ephemeral deployments that
- * still want reconnect continuity within a page's lifetime.
- */
-export class MemPersistence implements Persistence {
-  private saved = new Map<string, Snapshot>();
-
-  async load(spaceId: string): Promise<Snapshot | null> {
-    const s = this.saved.get(spaceId);
-    if (!s) return null;
-    // Return a copy so the store cannot alias saved state.
-    return { entries: new Map(s.entries), cursor: s.cursor ? { ...s.cursor } : null };
-  }
-
-  async save(spaceId: string, s: Snapshot): Promise<void> {
-    this.saved.set(spaceId, s);
-  }
 }
 
 function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
@@ -80,7 +53,7 @@ export class Store {
   private cursor: Cursor | null = null;
   // eligible: the first catch-up frontier of the current subscription
   // instance has been applied (invariant F7); until then no cursor may
-  // be advanced or persisted.
+  // be advanced.
   private eligible = false;
 
   // Catch-up window state (transient-tombstone strategy).
@@ -93,53 +66,35 @@ export class Store {
   private epoch: Uint8Array | null = null;
 
   private constructor(
-    private readonly spaceId: string,
     private readonly prefixes: string[],
     private readonly prefixSetHash: Uint8Array,
-    private readonly persistence: Persistence | null,
     private readonly clock: () => number
   ) {}
 
   /**
-   * Creates a store for one space and prefix set, loading any persisted
-   * state. The prefix set is canonicalized. Async: the set-hash needs
-   * WebCrypto.
+   * Creates an empty store for one prefix set. The set is
+   * canonicalized. Async: the set-hash needs WebCrypto. A store belongs
+   * to one space — its cursor is meaningless anywhere else.
    */
-  static async create(
-    spaceId: string,
-    prefixes: string[],
-    persistence: Persistence | null = null,
-    opts: StoreOptions = {}
-  ): Promise<Store> {
+  static async create(prefixes: string[], opts: StoreOptions = {}): Promise<Store> {
     const canon = canonicalPrefixes(prefixes);
-    const hash = await setHash(canon);
-    const s = new Store(spaceId, canon, hash, persistence, opts.clock ?? (() => Date.now()));
-    if (persistence) {
-      const snap = await persistence.load(spaceId);
-      if (snap) {
-        s.entries = new Map(snap.entries);
-        // Present the persisted cursor only if it was earned under the
-        // same prefix set.
-        if (snap.cursor && bytesEqual(snap.cursor.setHash, hash)) {
-          s.cursor = snap.cursor;
-        }
-      }
-    }
-    return s;
+    return new Store(canon, await setHash(canon), opts.clock ?? (() => Date.now()));
   }
 
   /**
    * The subscribe inputs for a (re)connection: the prefix set plus the
-   * persisted cursor, if any.
+   * cursor earned so far, if any.
    */
   subscribeParams(): { prefixes: string[]; cursor?: Cursor } {
     return { prefixes: this.prefixes, ...(this.cursor ? { cursor: this.cursor } : {}) };
   }
 
+  /** The latest value for `key`, or undefined. */
   get(key: string): Uint8Array | undefined {
     return this.entries.get(key)?.value;
   }
 
+  /** Number of keys held. */
   get size(): number {
     return this.entries.size;
   }
@@ -237,7 +192,6 @@ export class Store {
         this.eligible = true;
         if (m.seq > this.liveMaxSeq) this.liveMaxSeq = m.seq;
         this.advanceCursor();
-        await this.save();
         return;
       }
       default:
@@ -262,22 +216,6 @@ export class Store {
     if (!this.cursor || !bytesEqual(this.cursor.epoch, this.epoch) || this.liveMaxSeq > this.cursor.seq) {
       this.cursor = { epoch: this.epoch.slice(), seq: this.liveMaxSeq, setHash: this.prefixSetHash };
     }
-  }
-
-  /**
-   * Saves the store and cursor atomically, if a Persistence is
-   * configured and a cursor has been earned. Safe to call at any cadence.
-   */
-  async persist(): Promise<void> {
-    await this.save();
-  }
-
-  private async save(): Promise<void> {
-    if (!this.persistence || !this.eligible) return;
-    const entries = new Map<string, KV>();
-    for (const [k, v] of this.entries) entries.set(k, v);
-    const cursor = this.cursor ? { ...this.cursor } : null;
-    await this.persistence.save(this.spaceId, { entries, cursor });
   }
 
   /**

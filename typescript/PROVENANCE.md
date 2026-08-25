@@ -48,8 +48,24 @@ the portable core is **copied** here, succession-style, exactly as
   algorithm as `panaudia-engine/buffers/jitter_buffer.go`, and its
   browser-specific tuning (deepened L/H minimums, windowReads 750) is
   the deliberate 2026-06-10 reader-burst retune, kept as-is.
-- Further portable-core copies (coordinates, verify gates, …) will be
-  recorded here as they arrive.
+- **Copied 2026-08-24 → `src/lasa/coordinates.ts`** (from
+  `src/shared/coordinates.ts`): the framework ↔ pose converters
+  (Three.js, Babylon, A-Frame, PlayCanvas, Unity, Unreal, PixiJS;
+  Euler math ported from Three.js, MIT). Deliberate divergences at
+  copy time: converters target the LASA wire `Pose` (flat, metres and
+  radians, `lasa-core.md` §5.1) instead of the old degree-based
+  `{position, rotation}` pair, and the deprecated 0-1-normalising
+  `webglToAmbisonic*` legacy API is dropped. Do NOT restore it on a
+  re-sync: LASA positions are metres. Fixed relative to the source
+  (2026-08-24 review, both latent bugs in the old SDK): Unity Euler
+  order `'ZXY'` → `'YXZ'` and PlayCanvas `'XYZ'` → `'ZYX'`. Added
+  beyond the source: angle wrapping into (-π, π] on the
+  direct-mapping paths (A-Frame, PixiJS) and an optional Euler-order
+  parameter on the Three.js converters. Tests ported from
+  `test/coordinates.test.ts` and extended with independently derived
+  multi-axis goldens.
+- Further portable-core copies (verify gates, …) will be recorded
+  here as they arrive.
 
 ## Divergences from the copy
 
@@ -92,6 +108,28 @@ the portable core is **copied** here, succession-style, exactly as
    SDK only window-sampled cumulative counters; the capture processor
    posts ring-overflow changes on its (previously unused) port. Both
    post only on change — silent on a healthy stream.
+7. (publication prep, 2026-08-24) `src/transport/types.ts`: pruned to
+   the symbols the transport actually uses (`ConnectionState` plus
+   the live MoQ enums and interfaces). Deleted as dead old-panaudia
+   carry-overs, not accidental truncation: `MoqTrack`, `MoqObject`,
+   `MoqForwardingPreference`, `MoqErrorCode`, `PanaudiaConfig`,
+   `PanaudiaTrackType`, `generateTrackNamespace` (LASA track naming
+   lives in `src/lasa/setup.ts`), and the `WebTransport*` interface
+   duplicates (the globals in `webtransport.d.ts` are the single
+   source). `src/shared-types.ts` deleted with it: only
+   `ConnectionState` was live, and it moved into
+   `transport/types.ts`, dropping the never-used `AUTHENTICATED`
+   member.
+8. (pre-publication review, 2026-08-24; ledger
+   `lasa-planning/plan/ts-publication-review-2026-08-24.md`): pruned
+   the copied transport layer further. Gone from `connection.ts`:
+   `DatagramSender`, `getIncomingStreams`, `getDatagrams`,
+   `getDatagramReader`, `revertToMainDatagramMode`,
+   `ingestForwardedDatagram`, `getPendingDatagramCount`; from
+   `subgroups.ts`: `SubgroupRouter.start`; from `errors.ts`: five
+   unused error classes and `wrapError`. The main-thread datagram
+   dispatcher on `MoqConnection` stays: it is the raw transport usage
+   without the worker, exercised by `interop/main.ts`.
 
 ## New files beside the copy (not divergences)
 

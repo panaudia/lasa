@@ -10,6 +10,7 @@
  * where aliasing is safe for synchronous consumption.
  */
 
+/** A packet or message that violates its format. Receivers discard it. */
 export class MalformedError extends Error {}
 /** Unknown flag bits: not this format — callers MUST discard silently. */
 export class UnknownFlagsError extends Error {}
@@ -81,12 +82,14 @@ export function parsePose(view: DataView, offset: number): Pose {
 // Mono-object (uplink)
 // ---------------------------------------------------------------------------
 
+/** A repeat of an earlier packet's audio, for loss repair (`lasa-core.md` §5.1). */
 export interface Redundancy {
   /** 1–7 packets back; the referenced packet MUST be audio-bearing. */
   offset: number;
   audio: Uint8Array;
 }
 
+/** One mono-object datagram: any of a pose, an audio frame, and a redundancy record. */
 export interface MonoObjectPacket {
   pose?: Pose;
   audio?: Uint8Array;
@@ -176,6 +179,7 @@ export function parseMonoObject(data: Uint8Array): MonoObjectPacket {
 // Sink (downlink: binaural / ambi2 / ambi3 — same layout)
 // ---------------------------------------------------------------------------
 
+/** One sink datagram: a rendered audio frame with optional redundancy. */
 export interface SinkPacket {
   /** Unix-epoch microseconds of the frame's first sample (informational). */
   timestampMicros?: bigint;
@@ -225,27 +229,32 @@ export function parseSink(data: Uint8Array): SinkPacket {
 
 /** 0 = full scale, −0.5 dB per step down to 254 = −127 dBFS; 255 = silence (below −127 dBFS). */
 export const LOUDNESS_SILENT = 255;
+/** Converts an 8-bit presence loudness to dBFS (`-Infinity` for `LOUDNESS_SILENT`). */
 export function loudnessToDBFS(l: number): number {
   return l === LOUDNESS_SILENT ? -Infinity : l * -0.5;
 }
 
+/** One entity in a presence keyframe. */
 export interface KeyframeRecord {
   headFrame: boolean;
   id: string;
   pose: Pose;
   loudness: number;
 }
+/** A presence keyframe: the full record set from index `first`, for generation `gen`. */
 export interface PresenceKeyframe {
   kind: 'keyframe';
   gen: number;
   first: number;
   records: KeyframeRecord[];
 }
+/** One changed entity in a presence delta, by keyframe index. */
 export interface DeltaRecord {
   index: number;
   pose: Pose;
   loudness: number;
 }
+/** A presence delta: changed records for generation `gen`. */
 export interface PresenceDelta {
   kind: 'delta';
   gen: number;

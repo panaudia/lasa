@@ -55,6 +55,13 @@ class CaptureRingProcessor extends AudioWorkletProcessor {
     super();
     const opts = (options && options.processorOptions) || {};
     this.signal = opts.signal;
+    // An active processor is never collected (Web Audio §"processor
+    // lifetime"), so dispose() sends 'stop' and process() returns false
+    // once, which lets the node and this ring's SAB views go.
+    this.stopped = false;
+    this.port.onmessage = (e) => {
+      if (e && e.data && e.data.type === 'stop') this.stopped = true;
+    };
     this.ring = new CaptureRing({
       numChannels: opts.numChannels,
       capacityFrames: opts.capacityFrames,
@@ -68,6 +75,7 @@ class CaptureRingProcessor extends AudioWorkletProcessor {
   // inputs[0] is the planar input (array of per-channel Float32Arrays); empty when no
   // source is connected. CaptureRing.write guards the empty/overflow cases.
   process(inputs) {
+    if (this.stopped) return false;
     const input = inputs[0];
     if (input && this.ring.write(input)) {
       // Clock-free wake (design §6.1): bump + notify the signal cell. One bounded

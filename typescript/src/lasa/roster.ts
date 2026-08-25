@@ -11,9 +11,13 @@ import type { Pose, PresenceKeyframe, PresenceDelta } from './wire.js';
 
 /** One live entity as presence last reported it. */
 export interface RosterEntry {
+  /** Entity id. */
   id: string;
+  /** True when the entity is head-framed (`lasa-core.md` §3). */
   headFrame: boolean;
+  /** Last reported pose, LASA coordinates. */
   pose: Pose;
+  /** 8-bit loudness; convert with `loudnessToDBFS`. */
   loudness: number;
 }
 
@@ -22,6 +26,11 @@ interface Slot {
   lastGroup: bigint; // group-id of the last applied record (latest-wins)
 }
 
+/**
+ * The live roster of a space, maintained from the presence track
+ * with the `lasa-core.md` §7 receive rules applied. Obtain one from
+ * {@link LasaClient.subscribeRoster}.
+ */
 export class PresenceRoster {
   private gen = 0;
   private seen = false; // a keyframe has established a generation
@@ -30,6 +39,7 @@ export class PresenceRoster {
   /** Called after any packet that changed the roster. */
   onUpdate?: () => void;
 
+  /** Applies one presence packet under the §7 rules. */
   apply(groupId: bigint, msg: PresenceKeyframe | PresenceDelta): void {
     let changed = false;
     if (msg.kind === 'keyframe') {

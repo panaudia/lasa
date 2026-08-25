@@ -150,6 +150,12 @@ export async function readSubgroupStream(
       // Copy: the payload aliases the rolling buffer.
       onObject(header, { objectId, payload: new Uint8Array(payload) });
     }
+  } catch (e) {
+    // A rejected or malformed stream must be cancelled, not just
+    // unlocked, or its QUIC stream and receive buffer live on until the
+    // session ends.
+    await reader.cancel(e).catch(() => {});
+    throw e;
   } finally {
     reader.releaseLock();
   }
@@ -168,7 +174,6 @@ const PENDING_OBJECT_CAP = 512;
 export class SubgroupRouter {
   private handlers = new Map<number, (h: SubgroupHeader, o: SubgroupObject) => void>();
   private pending = new Map<number, { h: SubgroupHeader; o: SubgroupObject }[]>();
-  private running = false;
 
   register(trackAlias: number, handler: (h: SubgroupHeader, o: SubgroupObject) => void): void {
     this.handlers.set(trackAlias, handler);
@@ -201,25 +206,6 @@ export class SubgroupRouter {
     this.pending.set(h.trackAlias, buf);
   }
 
-  /** Starts the accept loop; safe to call once per transport. */
-  start(transport: WebTransport): void {
-    if (this.running) return;
-    this.running = true;
-    void (async () => {
-      const streams = transport.incomingUnidirectionalStreams.getReader();
-      for (;;) {
-        const r = await streams.read().catch(() => ({ done: true as const, value: undefined }));
-        if (r.done) return;
-        void readSubgroupStream(
-          r.value as ReadableStream<Uint8Array>,
-          () => {},
-          (h, o) => this.ingest(h, o)
-        ).catch(() => {
-          // Malformed or non-subgroup stream: drop it.
-        });
-      }
-    })();
-  }
 }
 
 /**

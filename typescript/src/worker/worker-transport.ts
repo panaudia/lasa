@@ -2,7 +2,7 @@
  * Main-side face of the MOQ worker: the RPC client (request/reply
  * correlation + event fan-out) and the session proxy StateSync speaks
  * to. Constructed over any MessagePort-shaped endpoint so it is
- * unit-testable with a fake port; `WorkerTransport.spawn()` builds the
+ * unit-testable with a fake port; `WorkerTransport.spawn(worker)` wraps the
  * real module worker.
  */
 
@@ -63,9 +63,12 @@ export class WorkerTransport {
     port.onmessage = (e: MessageEvent) => this.dispatch(e.data as WorkerToMain);
   }
 
-  /** Builds the real module worker (Vite worker pattern). */
-  static spawn(): WorkerTransport {
-    const worker = new Worker(new URL('./moq-worker.ts', import.meta.url), { type: 'module' });
+  /**
+   * Wraps a real Worker. The worker itself comes from
+   * `moq-worker-loader.ts` (`createMoqWorker()`), kept out of this
+   * module so the RPC layer stays unit-testable without the bundle.
+   */
+  static spawn(worker: Worker): WorkerTransport {
     return new WorkerTransport(worker as unknown as WorkerPortLike);
   }
 

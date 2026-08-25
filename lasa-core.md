@@ -19,12 +19,6 @@ audio format families.
   rendered output (9 and 16 channels, ACN order, SN3D normalisation).
 - **`binaural`** is binaural stereo rendered output.
 
-There are no loudspeaker-layout formats. Rendered output is binaural
-or ambisonic, nothing else. LASA is likewise opinionated about codec.
-It accepts Opus at 48 kHz in 5 ms frames and nothing else. (At 5 ms
-Opus is CELT-only. The trade was priced and accepted, see
-`plan/opus-frame-size.md`.)
-
 LASA also provides game-engine-style semantics for synchronising
 distributed data: a small key/value **state store** with
 server-assigned sequence ids, resumable subscriptions, and role and
@@ -33,25 +27,23 @@ permission filtering.
 LASA commits to MoQ rather than defining an agnostic packet format.
 MoQ serves as the session, subscription and identity layer. Track
 identity carries what would otherwise be per-packet header fields,
-and subscription is the format negotiation. LASA does not use MoQ as
-a caching or relay fabric. Apart from `presence` (and, in a possible
-future relay topology, the uplinks), every track is per-subscriber
-and not meaningfully cacheable.
+and subscription is the format negotiation.
 
-### 1.1 Layering: core and profiles
+### 1.1 Core and profiles
 
 This document specifies the **core**: media tracks and the state
-machinery. The core is content-blind and attaches no meaning to any
-state key. The split between the two documents is machinery versus
-vocabulary, not optionality. The single key prefix **`lasa.`** (with
-the trailing dot) belongs to the first-party **base profile**, a
-normative companion specification (`lasa-base-profile.md`) that
-defines the standard key vocabulary, the role definitions, and the
-key lifetime semantics. The base profile is not optional. Every
-conforming Space implements it, which is why the entity schema the
-core references (§4.2) carries base-profile fields. All other keys
-are application space, layered on top of the base profile and never
-in place of it. There is no profile discovery mechanism and no
+machinery, but not state parameters.
+
+The state namespace starting with key prefix **`lasa.`** is used by the
+**base profile**, which is described in a sibling document (`lasa-base-profile.md`).
+This defines the standard key vocabulary used by LASA,
+the role definitions, rendering options and permissions, etc. 
+The base profile is not optional. Every conforming Space implements it. 
+
+All other key values are available for use by applications, which can define their own profiles.
+Extending values can be layered on top of the base profile, rather than replacing it.
+
+There is no profile discovery mechanism and no
 registry. Clients know what application vocabulary they are
 connecting to out-of-band.
 
@@ -71,8 +63,10 @@ identifier = [a-z0-9-]{1,128}     (lowercase alphanumeric + hyphen, 1–128 byte
 ```
 
 Dots are excluded so that identifiers embedded in dotted keys remain
-unambiguous. Lowercase UUIDs fit the grammar and are the conventional
-choice for entity, client and space ids.
+unambiguous. Lowercase UUIDs fit the grammar. Issuers that cannot
+otherwise guarantee uniqueness within a space SHOULD mint client and
+entity ids as lowercase RFC 9562 UUIDs; implementations MUST NOT
+assume any structure beyond the grammar.
 
 State keys are sequences of `[a-z0-9.-]`, at most 512 bytes.
 

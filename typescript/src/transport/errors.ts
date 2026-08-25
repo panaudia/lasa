@@ -17,29 +17,6 @@ export class MoqClientError extends Error {
 }
 
 /**
- * Error thrown when WebTransport is not supported
- */
-export class WebTransportNotSupportedError extends MoqClientError {
-  constructor() {
-    super(
-      'WebTransport is not supported in this browser. Try Chrome 97+, Edge 97+, or Safari 16.4+.',
-      'WEBTRANSPORT_NOT_SUPPORTED'
-    );
-    this.name = 'WebTransportNotSupportedError';
-  }
-}
-
-/**
- * Error thrown when connection fails
- */
-export class ConnectionError extends MoqClientError {
-  constructor(message: string, details?: unknown) {
-    super(message, 'CONNECTION_FAILED', details);
-    this.name = 'ConnectionError';
-  }
-}
-
-/**
  * Error thrown when authentication fails
  */
 export class AuthenticationError extends MoqClientError {
@@ -56,7 +33,7 @@ export class AuthenticationError extends MoqClientError {
    * Check if this is an invalid token error
    */
   isInvalidToken(): boolean {
-    return this.moqErrorCode === 0x02 || this.moqErrorCode === 0x403;
+    return this.moqErrorCode !== undefined && isSubscribeAuthError(this.moqErrorCode);
   }
 
   /**
@@ -64,16 +41,6 @@ export class AuthenticationError extends MoqClientError {
    */
   isExpiredToken(): boolean {
     return this.message.toLowerCase().includes('expired');
-  }
-}
-
-/**
- * Error thrown when JWT parsing fails
- */
-export class JwtParseError extends MoqClientError {
-  constructor(message: string, details?: unknown) {
-    super(message, 'JWT_PARSE_FAILED', details);
-    this.name = 'JwtParseError';
   }
 }
 
@@ -122,35 +89,8 @@ export class AnnouncementError extends MoqClientError {
 }
 
 /**
- * Error thrown when the client is in an invalid state for an operation
- */
-export class InvalidStateError extends MoqClientError {
-  constructor(expectedState: string, actualState: string) {
-    super(
-      `Invalid state: expected ${expectedState}, but was ${actualState}`,
-      'INVALID_STATE',
-      { expectedState, actualState }
-    );
-    this.name = 'InvalidStateError';
-  }
-}
-
-/**
- * Error thrown when a timeout occurs
- */
-export class TimeoutError extends MoqClientError {
-  constructor(operation: string, timeoutMs: number) {
-    super(
-      `Operation '${operation}' timed out after ${timeoutMs}ms`,
-      'TIMEOUT',
-      { operation, timeoutMs }
-    );
-    this.name = 'TimeoutError';
-  }
-}
-
-/**
- * Maps MOQ error codes to human-readable messages
+ * Session-level (connection close) error codes, as emitted by the
+ * moqtransport fork the LASA server runs (`errors.go`, `ErrorCode`).
  */
 export function getMoqErrorMessage(code: number): string {
   switch (code) {
@@ -163,31 +103,70 @@ export function getMoqErrorMessage(code: number): string {
     case 0x03:
       return 'Protocol violation';
     case 0x04:
-      return 'Duplicate track alias';
+      return 'Invalid request ID';
     case 0x05:
-      return 'Parameter length mismatch';
+      return 'Duplicate track alias';
     case 0x06:
-      return 'Too many subscribes';
+      return 'Key-value formatting error';
+    case 0x07:
+      return 'Too many requests';
+    case 0x08:
+      return 'Invalid path';
+    case 0x09:
+      return 'Malformed path';
     case 0x10:
       return 'GOAWAY timeout';
-    case 0x403:
-      return 'Invalid token (custom)';
+    case 0x11:
+      return 'Control message timeout';
+    case 0x12:
+      return 'Data stream timeout';
+    case 0x13:
+      return 'Auth token cache overflow';
+    case 0x14:
+      return 'Duplicate auth token alias';
+    case 0x15:
+      return 'Version negotiation failed';
+    case 0x16:
+      return 'Malformed auth token';
+    case 0x17:
+      return 'Unknown auth token alias';
     default:
       return `Unknown error (0x${code.toString(16)})`;
   }
 }
 
 /**
- * Wraps an unknown error into a MoqClientError
+ * SUBSCRIBE_ERROR codes. A separate table from the session codes above:
+ * the fork's `ErrorCodeSubscribe*` set (`errors.go`), which is what the
+ * LASA server sends when it refuses a subscribe.
  */
-export function wrapError(error: unknown, defaultCode: string = 'UNKNOWN'): MoqClientError {
-  if (error instanceof MoqClientError) {
-    return error;
+export function getSubscribeErrorMessage(code: number): string {
+  switch (code) {
+    case 0x00:
+      return 'Internal error';
+    case 0x01:
+      return 'Unauthorized';
+    case 0x02:
+      return 'Timeout';
+    case 0x03:
+      return 'Not supported';
+    case 0x04:
+      return 'Track does not exist';
+    case 0x05:
+      return 'Invalid range';
+    case 0x10:
+      return 'Malformed auth token';
+    case 0x12:
+      return 'Expired auth token';
+    case 0x403:
+      return 'Invalid token (custom)';
+    default:
+      return `Unknown subscribe error (0x${code.toString(16)})`;
   }
-
-  if (error instanceof Error) {
-    return new MoqClientError(error.message, defaultCode, error);
-  }
-
-  return new MoqClientError(String(error), defaultCode);
 }
+
+/** SUBSCRIBE_ERROR codes that mean the subscribe was refused on auth grounds. */
+export function isSubscribeAuthError(code: number): boolean {
+  return code === 0x01 || code === 0x10 || code === 0x12 || code === 0x403;
+}
+

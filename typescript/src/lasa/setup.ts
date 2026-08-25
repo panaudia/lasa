@@ -13,15 +13,21 @@ export const SETUP_PARAM_CONNECTION_CONFIG = 0x1a5a1;
 
 /** An entity definition (schemata/entity.schema.json subset). */
 export interface LasaEntity {
+  /** Entity id, unique within the space. An identifier per `lasa-core.md` §2. */
   id: string;
+  /** Display name. */
   name: string;
+  /** Priority entity (profile semantics, `lasa-base-profile.md`). */
   priority?: boolean;
   /** Channels in which this entity's source is heard (§4; omitted → ["main"]). */
   'heard-in'?: string[];
   /** Channels this entity's sink listens to (§4; omitted → ["main"]). */
   hears?: string[];
+  /** Free-form application attributes, published in state. */
   attrs?: Record<string, unknown>;
+  /** Pose frame: `world` (default) or `head` (`lasa-core.md` §3). */
   frame?: 'world' | 'head';
+  /** Degrees of freedom the entity's pose carries (default 6). */
   dof?: 0 | 3 | 6;
   /**
    * Latency-tolerance intent for this entity's audio path, 0–2
@@ -40,12 +46,15 @@ export interface LasaEntity {
     position?: { x: number; y: number; z: number };
     attitude?: { yaw: number; pitch: number; roll: number };
   };
+  /** Rendering parameters: gain multiplier, distance attenuation, source size, directivity. */
   render?: { gain?: number; attenuation?: number; size?: number; directivity?: number };
 }
 
 /** A setup instantiating a ticket-defined entity by id. */
 export interface LasaSetup {
+  /** Id of an entity the ticket defines. */
   id: string;
+  /** Attributes merged over the ticket's definition. */
   attrs?: Record<string, unknown>;
   'initial-pose'?: LasaEntity['initial-pose'];
 }
