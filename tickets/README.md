@@ -21,7 +21,8 @@ Two things live here:
 ## The tool
 
 ```
-go install github.com/panaudia/lasa/cmd/lasa-ticket@latest
+go install github.com/panaudia/lasa/cmd/lasa-ticket@latest   # a tagged release
+go install ./cmd/lasa-ticket                                  # from a checkout, repo root
 ```
 
 **1. Keys.** One Ed25519 pair per space. The server takes the public key
