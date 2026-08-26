@@ -1,10 +1,11 @@
 # LASA — Live Atomic Spatial Audio
 
-A protocol for live, multi-user, object-based, spatial audio streaming.
+A protocol for live, object-based, spatial audio streaming.
 
 ### Features:
 
-- Multiple object-based sources per client
+- Multiple clients, can contribute audio and listen simultaneously 
+- Each clients can contribute multiple object-based sources
 - Binaural and ambisonic sinks
 - Audio and pose data in the same packet
 - Real-time DB for state
@@ -43,7 +44,7 @@ This removes issues of synchronisation and extra positional latency due to inter
 Audio is sent in MoQ datagram tracks whose characteristics are lossy and low latency (a bit UDP like).
 
 To add greater resilience, LASA allows for error correction with the addition of full bandwith redundant audio data.
-The offset, as from that the size of loss this can mask, is adjustable at the cost of additional latency. 
+The offset, and from that the size of loss this can mask, is adjustable at the cost of additional latency. 
 ie we can mask a 20ms outage if you will accept 20ms of additional latency.
 
 **Presence**
@@ -53,7 +54,7 @@ Like a game engine, LASA, optionally, provides a presence feed containing the po
 **Distributed State**
 
 All other state in LASA, apart from the audio and pose data, is managed through a distributed key-value store.
-This is a centralised in-memory, pub-sub, real-time database with sequential consistancy.
+This is a real-time, pub-sub database with sequential consistancy.
 
 State change operations are carried in a MoQ reliable stream track allowing the state store to provide good consistency guarantees.
 Keys are utf-8 strings, values are binary data.

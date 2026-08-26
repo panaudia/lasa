@@ -3,7 +3,6 @@
   "version": "0.1.0",
   "description": "LASA TypeScript client SDK: live spatial audio over Media-over-QUIC (WebTransport, WebCodecs, AudioWorklet)",
   "license": "MIT",
-  "private": true,
   "repository": {
     "type": "git",
     "url": "git+https://github.com/panaudia/lasa.git",
@@ -58,5 +57,8 @@
     "vite": "^6.0.0",
     "vite-plugin-dts": "^5.0.3",
     "vitest": "^4.1.10"
+  },
+  "publishConfig": {
+    "access": "public"
   }
 }

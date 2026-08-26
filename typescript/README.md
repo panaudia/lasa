@@ -108,6 +108,13 @@ The [API reference](docs/api/index.md) is generated from the source
 with TypeDoc, as markdown, and committed. `npm run docs:api`
 regenerates it after a change to the exported surface.
 
+## Working with Claude Code
+
+The repository ships a skill, `.claude/skills/lasa-client/SKILL.md`,
+that points Claude at the verified examples and the details client
+code must get right. Copy that directory into your own project's
+`.claude/skills/` to use it there.
+
 ## Examples
 
 - [minimal](examples/minimal) is the starting point to copy: join a
