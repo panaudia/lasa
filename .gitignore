@@ -8,3 +8,4 @@ dist/
 
 # Claude Code: track the repo skills, not the per-machine settings
 .claude/settings.local.json
+/lasa-ticket

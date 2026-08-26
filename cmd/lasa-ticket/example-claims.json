@@ -1,0 +1,32 @@
+{
+  "_comment": "A LASA ticket claims file (lasa-core.md §4.3). Remove every _comment before minting; iat is stamped by mint.",
+  "iss": "my-app",
+  "_comment_aud": "aud MUST equal the space id: [a-z0-9-], 1-128 chars. Tickets for another space are rejected.",
+  "aud": "df8c7a85-0702-45e9-a626-a1c147eafce9",
+  "_comment_exp": "exp is epoch seconds and the only bound on reuse. Omit and pass --exp 24h to mint, or set it here.",
+  "exp": 1893456000,
+  "panaudia": {
+    "_comment_client_id": "The connecting client's id; its connection config must carry the same value.",
+    "client_id": "6f1c2d3e-8a4b-4c5d-9e0f-1a2b3c4d5e6f",
+    "_comment_roles": "Base-profile roles: admin, presenter, moderator, producer, audience. Empty means audience.",
+    "roles": ["presenter"],
+    "_comment_permissions": "Explicit state-access grants by key prefix, union'd with what the roles allow.",
+    "permissions": {
+      "set": ["myapp."],
+      "clear": ["myapp."],
+      "read": ["myapp."]
+    },
+    "_comment_entities": "Signed entity definitions; the client instantiates them by id in its setups.",
+    "entities": [
+      {
+        "id": "a1b2c3d4-0000-0000-0000-000000000001",
+        "name": "Paul",
+        "priority": true,
+        "heard-in": ["main"],
+        "hears": ["main"],
+        "attrs": {"colour": "00aaff"},
+        "render": {"gain": 1.5, "attenuation": 2.0}
+      }
+    ]
+  }
+}

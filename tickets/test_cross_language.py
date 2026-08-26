@@ -1,10 +1,12 @@
 """
 Cross-language verification test for LASA tickets.
 
-Generates a key pair with Python, then creates tickets with Go and TypeScript,
-and verifies that Python can validate the signatures from both — and that each
-payload validates against the normative ticket schema
-(../schemata/ticket.schema.json), the same check the LASA server applies.
+Generates a key pair with Python, then creates tickets with Go, TypeScript
+and the lasa-ticket CLI, and verifies that Python can validate the signatures
+from all three — and that each payload validates against the normative ticket
+schema (../schemata/ticket.schema.json), the same check the LASA server
+applies. The CLI's verify (the server's own verifier) is then run over the
+sample-made tickets, closing the loop in the other direction.
 """
 
 import json
@@ -160,6 +162,55 @@ def create_ticket_with_go(tmpdir: str) -> str:
                 pass
 
 
+CLI_DIR = os.path.join(SCRIPT_DIR, "..", "cmd", "lasa-ticket")
+
+
+def cli(args: list[str], stdin: str | None = None) -> subprocess.CompletedProcess:
+    """Run lasa-ticket from source (go run) with the given arguments."""
+    return subprocess.run(
+        ["go", "run", "."] + args,
+        cwd=CLI_DIR, input=stdin, capture_output=True, text=True, timeout=120,
+    )
+
+
+def create_ticket_with_cli(tmpdir: str) -> str:
+    """Mint with lasa-ticket from a claims file using the Python-made key."""
+    # The same claims the three samples hard-code, so verify_ticket's
+    # value checks apply to this ticket too.
+    claims = {
+        "iss": "my-app",
+        "aud": SPACE_ID,
+        "panaudia": {
+            "client_id": CLIENT_ID,
+            "roles": ["presenter"],
+            "permissions": {"set": ["myapp."], "clear": ["myapp."], "read": ["myapp."]},
+            "entities": [{
+                "id": ENTITY_ID, "name": "Paul", "priority": True,
+                "heard-in": ["main"], "hears": ["main"],
+                "attrs": {"colour": "00aaff"},
+                "render": {"gain": 1.5, "attenuation": 2.0},
+            }],
+        },
+    }
+    claims_path = os.path.join(tmpdir, "claims.json")
+    with open(claims_path, "w") as f:
+        json.dump(claims, f)
+    result = cli(["mint", "--key", os.path.join(tmpdir, "private.pem"), claims_path, "--exp", "1h"])
+    if result.returncode != 0:
+        print(f"  CLI stderr: {result.stderr}", file=sys.stderr)
+        raise RuntimeError(f"lasa-ticket mint failed: {result.stderr}")
+    return result.stdout.strip()
+
+
+def verify_with_cli(ticket: str, tmpdir: str, label: str):
+    """The server's verifier (via lasa-ticket verify) accepts the ticket."""
+    result = cli(["verify", "-", "--pub", os.path.join(tmpdir, "public.pem"), "--space", SPACE_ID], stdin=ticket)
+    if result.returncode != 0 or not result.stdout.startswith("OK"):
+        print(f"  CLI stderr: {result.stderr}", file=sys.stderr)
+        raise RuntimeError(f"{label}: lasa-ticket verify rejected the ticket: {result.stderr}")
+    print(f"  {label}: OK")
+
+
 def main():
     validator = load_ticket_validator()
     with tempfile.TemporaryDirectory() as tmpdir:
@@ -179,6 +230,17 @@ def main():
         go_ticket = create_ticket_with_go(tmpdir)
         print(f"  Ticket created ({len(go_ticket)} chars)")
         verify_ticket(go_ticket, public_pem, validator, "Go → Python")
+
+        # Step 4: Mint with the lasa-ticket CLI, verify with Python
+        print("\nCreating ticket with lasa-ticket...")
+        cli_ticket = create_ticket_with_cli(tmpdir)
+        print(f"  Ticket created ({len(cli_ticket)} chars)")
+        verify_ticket(cli_ticket, public_pem, validator, "lasa-ticket → Python")
+
+        # Step 5: The server's verifier accepts the sample-made tickets
+        print("\nVerifying sample tickets with lasa-ticket (the server's verifier)...")
+        verify_with_cli(ts_ticket, tmpdir, "TypeScript → lasa-ticket verify")
+        verify_with_cli(go_ticket, tmpdir, "Go → lasa-ticket verify")
 
         print("\n=== CROSS-LANGUAGE: ALL TESTS PASSED ===")
 

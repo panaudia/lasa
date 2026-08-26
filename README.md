@@ -92,7 +92,7 @@ The sibling repo https://github.com/panaudia/panaudia-lasa contains a full, LASA
 
 ## Tickets
 
-In `tickets` you will find sample code for creating and validating the JWT based tickets that LASA uses.
+`lasa-ticket` (`cmd/lasa-ticket`, `go install github.com/panaudia/lasa/cmd/lasa-ticket@latest`) creates keys, mints and checks the JWT based tickets that LASA uses, on the same verifier the server runs. `tickets/` has the guide and sample issuer code in Go, Python and TypeScript.
 
 ## TypeScript Client
 
