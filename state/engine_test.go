@@ -1,9 +1,9 @@
 package state
 
 import (
-	"fmt"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"sync"
 	"testing"
