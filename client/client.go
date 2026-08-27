@@ -76,7 +76,7 @@ func Dial(ctx context.Context, addr string, cfg Config) (*Client, error) {
 	if err != nil {
 		return nil, err
 	}
-	return start(ctx, cfg, quicmoq.NewClient(conn))
+	return start(ctx, cfg, quicmoq.NewClient(conn), nil)
 }
 
 // DialWebTransport connects over WebTransport — the browser transport;
@@ -115,18 +115,20 @@ func DialWebTransport(ctx context.Context, urlStr string, cfg Config) (*Client, 
 		_ = qconn.CloseWithError(0, "webtransport dial failed")
 		return nil, err
 	}
-	c, err := start(ctx, cfg, webtransportmoq.NewClient(sess))
+	closeReason := wtCloseReason(sess)
+	c, err := start(ctx, cfg, webtransportmoq.NewClient(sess), closeReason)
 	if err != nil {
 		// A server rejection races its own teardown: the control-stream
 		// FIN can reach the blocked MoQ read before the WT_CLOSE_SESSION
 		// capsule is processed, so RunContext fails with a bare EOF. The
-		// session's close cause is the authoritative §4.6 reason, so
-		// wait a grace window for it and prefer it when it carries the
-		// coded SessionError (correctness rides the code alone).
+		// session's recorded close error is the authoritative §4.6
+		// reason, so wait a grace window for the session to end and
+		// prefer that error when it carries the coded SessionError
+		// (correctness rides the code alone).
 		select {
 		case <-sess.Context().Done():
 			var sessErr *webtransport.SessionError
-			if cause := context.Cause(sess.Context()); errors.As(cause, &sessErr) {
+			if errors.As(closeReason(), &sessErr) {
 				return nil, fmt.Errorf("lasa: session closed by server: %w", sessErr)
 			}
 		case <-time.After(250 * time.Millisecond):
@@ -136,9 +138,27 @@ func DialWebTransport(ctx context.Context, urlStr string, cfg Config) (*Client, 
 	return c, nil
 }
 
+// wtCloseReason reports a WebTransport session's recorded close error:
+// once the session is closed, webtransport-go returns it from every
+// session operation, and when the peer closed with a code it is the
+// *webtransport.SessionError carrying that code. This is the library's
+// own way of surfacing the reason (the session context is merely
+// cancelled). OpenStream is the cheapest such operation; the returned
+// func is only ever called after the session context has ended, when
+// the session is closed by construction, so it opens nothing.
+func wtCloseReason(sess *webtransport.Session) func() error {
+	return func() error {
+		_, err := sess.OpenStream()
+		return err
+	}
+}
+
 // start runs the MoQ session over an established transport connection —
-// the shared tail of both Dial variants.
-func start(ctx context.Context, cfg Config, mconn moqtransport.Connection) (*Client, error) {
+// the shared tail of both Dial variants. closeReason, when not nil,
+// reports the transport's recorded close error after its context ends;
+// it takes precedence over the context cause, which some transports
+// (WebTransport) leave as a bare cancellation.
+func start(ctx context.Context, cfg Config, mconn moqtransport.Connection, closeReason func() error) (*Client, error) {
 	raw, err := configJSON(cfg)
 	if err != nil {
 		return nil, err
@@ -158,7 +178,13 @@ func start(ctx context.Context, cfg Config, mconn moqtransport.Connection) (*Cli
 		tctx := mconn.Context()
 		select {
 		case <-tctx.Done():
-			cancel(context.Cause(tctx))
+			cause := context.Cause(tctx)
+			if closeReason != nil {
+				if err := closeReason(); err != nil {
+					cause = err
+				}
+			}
+			cancel(cause)
 		case <-cctx.Done():
 		}
 	}()
