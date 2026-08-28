@@ -6,7 +6,7 @@
 function lasaToThreejs(pose, order?): Vec3Pose;
 ```
 
-Defined in: src/lasa/coordinates.ts:472
+Defined in: [src/lasa/coordinates.ts:472](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/coordinates.ts#L472)
 
 Convert a LASA pose to a Three.js position and rotation.
 

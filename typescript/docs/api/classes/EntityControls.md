@@ -2,7 +2,7 @@
 
 # Class: EntityControls
 
-Defined in: src/lasa/base.ts:206
+Defined in: [src/lasa/base.ts:206](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L206)
 
 The operations an entity's owner may perform on it: personal mutes
 and solos, and runtime attrs. Reached as methods on
@@ -22,7 +22,7 @@ reconnect — a client rewrites what it knows.
 new EntityControls(writer, entityId): EntityControls;
 ```
 
-Defined in: src/lasa/base.ts:207
+Defined in: [src/lasa/base.ts:207](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L207)
 
 #### Parameters
 
@@ -39,7 +39,7 @@ Defined in: src/lasa/base.ts:207
 
 | Property | Modifier | Type | Description | Defined in |
 | ------ | ------ | ------ | ------ | ------ |
-| <a id="entityid"></a> `entityId` | `readonly` | `string` | The owned entity these controls act for. | src/lasa/base.ts:210 |
+| <a id="entityid"></a> `entityId` | `readonly` | `string` | The owned entity these controls act for. | [src/lasa/base.ts:210](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L210) |
 
 ## Methods
 
@@ -49,7 +49,7 @@ Defined in: src/lasa/base.ts:207
 clearAttr(path): Promise<void>;
 ```
 
-Defined in: src/lasa/base.ts:234
+Defined in: [src/lasa/base.ts:234](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L234)
 
 #### Parameters
 
@@ -69,7 +69,7 @@ Defined in: src/lasa/base.ts:234
 mute(other): Promise<void>;
 ```
 
-Defined in: src/lasa/base.ts:216
+Defined in: [src/lasa/base.ts:216](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L216)
 
 Silences the pair (this entity, `other`) in both directions.
 
@@ -91,7 +91,7 @@ Silences the pair (this entity, `other`) in both directions.
 setAttr(path, value): Promise<void>;
 ```
 
-Defined in: src/lasa/base.ts:231
+Defined in: [src/lasa/base.ts:231](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L231)
 
 Sets one runtime attribute, `path` dotted per §1 (`colour`, `avatar.hat`).
 
@@ -114,7 +114,7 @@ Sets one runtime attribute, `path` dotted per §1 (`colour`, `avatar.hat`).
 setAttrs(attrs): Promise<void>;
 ```
 
-Defined in: src/lasa/base.ts:238
+Defined in: [src/lasa/base.ts:238](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L238)
 
 Sets several attributes as one group (flat: one entry per leaf path).
 
@@ -136,7 +136,7 @@ Sets several attributes as one group (flat: one entry per leaf path).
 solo(other): Promise<void>;
 ```
 
-Defined in: src/lasa/base.ts:223
+Defined in: [src/lasa/base.ts:223](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L223)
 
 Hear `other` and the other solo'd entities only, overriding mutes.
 
@@ -158,7 +158,7 @@ Hear `other` and the other solo'd entities only, overriding mutes.
 unmute(other): Promise<void>;
 ```
 
-Defined in: src/lasa/base.ts:219
+Defined in: [src/lasa/base.ts:219](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L219)
 
 #### Parameters
 
@@ -178,7 +178,7 @@ Defined in: src/lasa/base.ts:219
 unsolo(other): Promise<void>;
 ```
 
-Defined in: src/lasa/base.ts:226
+Defined in: [src/lasa/base.ts:226](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L226)
 
 #### Parameters
 

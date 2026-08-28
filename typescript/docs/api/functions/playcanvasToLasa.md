@@ -6,7 +6,7 @@
 function playcanvasToLasa(position, rotation): Pose;
 ```
 
-Defined in: src/lasa/coordinates.ts:584
+Defined in: [src/lasa/coordinates.ts:584](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/coordinates.ts#L584)
 
 Convert a PlayCanvas position and rotation to a LASA pose.
 

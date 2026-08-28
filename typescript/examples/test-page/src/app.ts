@@ -47,7 +47,6 @@ interface EntityUI {
   id: string;
   name: string;
   pose: Pose;
-  seq: bigint; // pose-only publish sequence (non-capturing entities)
   row: HTMLDivElement;
   srcSel: HTMLSelectElement;
   captureBtn: HTMLButtonElement;
@@ -202,7 +201,6 @@ function addEntityRow(id: string, name: string): void {
     id,
     name,
     pose: { x: (idx % 5) - 2, y: 1 + Math.floor(idx / 5), z: 0, yaw: 0, pitch: 0, roll: 0 },
-    seq: 0n,
     row,
     srcSel,
     captureBtn,
@@ -603,7 +601,7 @@ async function sendPoseOnly(e: EntityUI): Promise<void> {
   if (!client) return;
   try {
     const pub = await client.entity(e.id, 1000);
-    await pub.publish(e.seq++, { pose: e.pose });
+    await pub.publish({ pose: e.pose }); // the worker sequences the track
   } catch (err) {
     log(`${e.id}: pose publish failed: ${String(err)}`);
   }

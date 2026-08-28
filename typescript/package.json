@@ -1,6 +1,6 @@
 {
   "name": "@panaudia/lasa-client",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "LASA TypeScript client SDK: live spatial audio over Media-over-QUIC (WebTransport, WebCodecs, AudioWorklet)",
   "license": "MIT",
   "repository": {

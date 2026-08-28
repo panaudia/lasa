@@ -6,7 +6,7 @@
 function unityToLasa(position, rotation): Pose;
 ```
 
-Defined in: src/lasa/coordinates.ts:628
+Defined in: [src/lasa/coordinates.ts:628](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/coordinates.ts#L628)
 
 Convert a Unity position and rotation to a LASA pose.
 

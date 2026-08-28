@@ -14,6 +14,7 @@ import { CaptureEncoder, type EncodedChunkLike, type FrameEncoder } from '../src
 import { PoseCell, allocatePoseCell, type PoseCellViews } from '../src/audio/pose-cell.js';
 import { parseObjectDatagram } from '../src/transport/moq-transport.js';
 import { parseMonoObject, type Pose } from '../src/lasa/wire.js';
+import { UplinkSequencer } from '../src/lasa/uplink.js';
 
 const SR = 48000;
 const FRAME = 240; // 5 ms @ 48 k — Opus packet boundary the fake emits on
@@ -60,7 +61,7 @@ function makeFakeEncoder(payloadLen = 40) {
   };
 }
 
-function harness(nc: number, capacityFrames: number, trackAlias: number, payloadLen = 40) {
+function harness(nc: number, capacityFrames: number, trackAlias: number, payloadLen = 40, redundancy = 0) {
   const sharedStorage = new Float32Array(capacityFrames * nc);
   const sharedWritePos = new BigInt64Array(1);
   const sharedReadPos = new BigInt64Array(1);
@@ -69,17 +70,19 @@ function harness(nc: number, capacityFrames: number, trackAlias: number, payload
   const views = plainPoseCell();
   const poseWriter = new PoseCell(views);
   const sent: Uint8Array[] = [];
+  const sequencer = new UplinkSequencer(redundancy);
   const enc = new CaptureEncoder({
     ring: consumer,
     trackAlias,
     sampleRate: SR,
     numChannels: nc,
     poseCell: new PoseCell(views),
+    sequencer,
     publisherPriority: 7,
     makeEncoder: makeFakeEncoder(payloadLen),
     send: (b) => sent.push(b.slice()), // copy: b is a reused pool buffer view
   });
-  return { producer, enc, sent, poseWriter };
+  return { producer, enc, sent, poseWriter, sequencer };
 }
 
 /** A planar quantum of `nFrames` (values are irrelevant to framing). */
@@ -173,6 +176,53 @@ describe('CaptureEncoder (LASA framing)', () => {
     expect(sent.length).toBe(10);
     const seqs = sent.map((b) => parseObjectDatagram(b).groupId);
     expect(seqs).toEqual([0n, 1n, 2n, 3n, 4n, 5n, 6n, 7n, 8n, 9n]);
+  });
+
+  it('sends no redundancy when the entity declared none', () => {
+    const { producer, enc, sent } = harness(1, 4096, 2);
+    producer.write(quantum(FRAME * 6, 1));
+    enc.pump();
+    for (const b of sent) expect(parseMonoObject(parseObjectDatagram(b).payload).redundancy).toBeUndefined();
+  });
+
+  it('attaches the §5.1 repeat at the declared offset: a copy of the frame `offset` packets back', () => {
+    const { producer, enc, sent } = harness(1, 8192, 2, 40, 3);
+    producer.write(quantum(FRAME * 12, 1));
+    enc.pump();
+    expect(sent.length).toBe(12);
+    const pkts = sent.map((b) => parseMonoObject(parseObjectDatagram(b).payload));
+    for (let i = 0; i < 3; i++) expect(pkts[i]!.redundancy).toBeUndefined(); // no reference yet
+    for (let i = 3; i < 12; i++) {
+      const r = pkts[i]!.redundancy;
+      expect(r, `seq ${i}`).toBeDefined();
+      expect(r!.offset).toBe(3);
+      // The fake encoder's payloads differ per packet, and the encoder's
+      // Opus scratch is reused — a copy that aliased it would be seq i's bytes.
+      expect(Array.from(r!.audio)).toEqual(Array.from(pkts[i - 3]!.audio!));
+      expect(Array.from(r!.audio)).not.toEqual(Array.from(pkts[i]!.audio!));
+    }
+    // Audio + copy + pose fit the (doubled) payload scratch: nothing dropped.
+    expect(enc.droppedOversize).toBe(0);
+  });
+
+  it('shares one gapless seq with pose-only publishes on the same sequencer', () => {
+    const { producer, enc, sent, sequencer } = harness(1, 4096, 2, 40, 1);
+    producer.write(quantum(FRAME * 2, 1));
+    enc.pump(); // seqs 0, 1 (audio)
+    // A pose-only publish between captures takes seq 2 on the same counter...
+    const poseOnly = { pose: { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0 } };
+    expect(sequencer.next(poseOnly)).toBe(2n);
+    expect(poseOnly).not.toHaveProperty('redundancy');
+    producer.write(quantum(FRAME * 2, 1));
+    enc.pump(); // seqs 3, 4
+    const seqs = sent.map((b) => parseObjectDatagram(b).groupId);
+    expect(seqs).toEqual([0n, 1n, 3n, 4n]);
+    const pkts = sent.map((b) => parseMonoObject(parseObjectDatagram(b).payload));
+    // ...so seq 3's reference (seq 2) was pose-only: the record is omitted,
+    // not pointed at a different offset; seq 4 references seq 3 normally.
+    expect(pkts[2]!.redundancy).toBeUndefined();
+    expect(pkts[3]!.redundancy!.offset).toBe(1);
+    expect(Array.from(pkts[3]!.redundancy!.audio)).toEqual(Array.from(pkts[2]!.audio!));
   });
 
   it('stop() resolves and closes the encoder', async () => {

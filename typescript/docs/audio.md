@@ -21,6 +21,7 @@ const handle = await client.startCapture('alice-voice', {
   channelIndex: 0,   // which channel of the source, default 0
   bitrate: 64000,    // Opus target, bits per second, default 64000
   pose: { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0 },
+  redundancy: 1,     // uplink repeat offset, default = the entity's declaration
 });
 
 handle.setPose(nextPose);   // at any rate, from any callback
@@ -36,6 +37,18 @@ context follows the device and is often 44.1 kHz. The frame duration
 is not an option. `bitrate` is the Opus target in bits per second,
 an encoder setting that never touches the wire format: voice is
 comfortable at 32 to 48 kb/s, a music or DAW source wants 96 to 128.
+
+`redundancy` is the uplink half of the entity's declaration
+(`LasaEntity.redundancy`, see [Connecting](connecting.md)). At an
+offset above 0 every audio packet also carries a full copy of the
+frame `offset` packets earlier, so the space repairs a burst of up
+to `offset` lost packets exactly instead of concealing them; the
+uplink audio bitrate doubles. It defaults to the declaration, which
+is also the ceiling — the space provisioned its ingest buffer from
+it — so the option can only lower it. The offset applies to every
+packet the entity sends, pose-only publishes included, because one
+sequencer in the worker owns the entity's track (`lasa-core.md`
+§5.1: one gapless sequence per track).
 
 Each entity captures one mono channel. A stereo source becomes two
 entities sharing one `source`, with `channelIndex` 0 and 1. A DAW
@@ -106,7 +119,8 @@ handler. The player calls `resume()` on the context for you.
 `qualityLevel` and `redundancy` default from the entity's definition
 (`LasaEntity.quality` and `LasaEntity.redundancy`) and MAY be
 overridden per player. The sink direction is client-local: the
-option changes this player's buffer, and nothing on the wire.
+option changes this player's buffer, and nothing on the wire. (The
+uplink half of `redundancy` is a `startCapture` option, above.)
 
 `qualityLevel` maps to the playout buffer's floor, robustness and
 capacity. 0 holds the buffer at its lowest latency and expects a
@@ -145,7 +159,7 @@ for applications that bring their own encoder or decoder.
 
 ```ts
 const publisher = await client.entity('alice-voice');
-await publisher.publish(seq++, { pose, audio: opusBytes });
+await publisher.publish({ pose, audio: opusBytes });
 
 await client.subscribeSink('alice-voice', 'binaural', (seq, packet) => {
   decoder.decode(new EncodedAudioChunk({ type: 'key', timestamp, data: packet.audio }));
@@ -154,12 +168,20 @@ await client.subscribeSink('alice-voice', 'binaural', (seq, packet) => {
 
 `entity()` resolves once the server has subscribed the entity's
 source track, normally within the first round trips. `publish`
-sends one mono-object packet with `seq` as its datagram group id.
-The sequence MUST be gapless and increasing.
+sends one mono-object packet. The datagram group id is the entity's
+gapless sequence, which the worker owns and shares with a running
+`startCapture` on the same entity — `lasa-core.md` §5.1 allows one
+counter per track, so the caller never supplies a `seq`. `publish`
+resolves once the packet is handed to the worker; a packet published
+before the server has subscribed the source is dropped with a
+`publish-dropped` notice.
 
 A `MonoObjectPacket` carries any of a `pose`, an `audio` payload, and
 a `redundancy` record repeating the audio from `offset` packets
-back. A `SinkPacket` carries `audio`, an optional `redundancy`, and
+back. When the entity's uplink redundancy offset is above 0 the
+worker attaches that record itself and replaces any the caller set;
+at offset 0 the caller's record goes out as given. A `SinkPacket`
+carries `audio`, an optional `redundancy`, and
 an informational `timestampMicros`. Packets with unknown flags or a
 malformed body are discarded before the handler sees them.
 `MalformedError` and `UnknownFlagsError` are the exceptions the

@@ -6,7 +6,7 @@
 function lasaToAframe(pose): Vec3Pose;
 ```
 
-Defined in: src/lasa/coordinates.ts:559
+Defined in: [src/lasa/coordinates.ts:559](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/coordinates.ts#L559)
 
 Convert a LASA pose to an A-Frame position and rotation.
 

@@ -57,11 +57,16 @@ scene, and both default to the least demanding setting:
 - `quality` (0 to 2) states how latency-tolerant this entity's
   audio is. The space sizes its ingest buffer from it, and the
   client sizes its own playout buffer from it. 0 is interactive.
-- `redundancy` (0 to 7) is the maximum redundancy offset. Above 0
-  the space is asked to repeat earlier audio in later packets on the
-  sink track, and the playout buffer grows a floor to make use of
-  the repeats. This client does not yet emit repeats on its own
-  uplink, so the declaration bounds only what it receives.
+- `redundancy` (0 to 7) is the maximum redundancy offset, and it
+  works in both directions. Above 0 the space repeats earlier audio
+  in later packets on the sink track and the playout buffer grows a
+  floor to make use of the repeats; and this client repeats its own
+  audio at the same offset on the entity's uplink, where the space's
+  ingest buffer (provisioned from the declaration) repairs a burst of
+  up to `redundancy` lost packets exactly. The price is double the
+  audio bitrate each way and a buffer floor of 2 × (offset + 2) × 5 ms
+  at each end. `startCapture` may lower the uplink offset below the
+  declaration, never raise it.
 
 Unticketed mode is a development mode with an empty threat model.
 Presenting a ticket to an unticketed space is refused with

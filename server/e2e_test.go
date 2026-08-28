@@ -1,6 +1,7 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
@@ -422,6 +423,99 @@ func engineGet(s *Server, key string) ([]byte, bool) {
 		}
 		if _, ok := m.(wire.Frontier); ok {
 			return nil, false
+		}
+	}
+}
+
+// TestE2EUplinkRedundancy: the client's uplink repeat emitter wired from
+// the entity's §4.2 declaration, seen from the server's ingress. An
+// entity declaring redundancy 2 sends audio, a pose-only packet, then
+// audio: the copies attach at offset 2 from the first packet whose
+// reference exists, the packet referencing the pose-only seq omits its
+// record, and an undeclared entity's packets carry nothing.
+func TestE2EUplinkRedundancy(t *testing.T) {
+	sp := startSpace(t, nil)
+	c := dial(t, sp, func(cfg *client.Config) {
+		cfg.Entities = []connect.Entity{
+			{ID: "e1", Name: "Alice", Redundancy: 2},
+			{ID: "e2", Name: "Bob"},
+		}
+	})
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	red, err := c.Entity(ctx, "e1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	plain, err := c.Entity(ctx, "e2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if red.Redundancy() != 2 || plain.Redundancy() != 0 {
+		t.Fatalf("publisher offsets %d/%d, want 2/0 from the declarations", red.Redundancy(), plain.Redundancy())
+	}
+	if err := red.SetRedundancy(3); err == nil {
+		t.Fatal("raising above the declaration must be refused")
+	}
+	if err := red.SetRedundancy(2); err != nil {
+		t.Fatal(err)
+	}
+
+	// seq: 0 audio, 1 audio, 2 pose-only, 3 audio, 4 audio, 5 audio.
+	// Datagrams are lossy even on loopback and the leading packets can
+	// race the subscription plumbing, so the sequence is resent as a
+	// whole until all six seqs have landed (duplicates are harmless to
+	// the stub, which records by seq).
+	pose := wire.Pose{X: 1}
+	audio := func(seq uint64) []byte { return []byte{0xA0, byte(seq), 0xC0, 0xD0} }
+	e1, e2 := sp.backend.entity("e1"), sp.backend.entity("e2")
+	buf := make([]byte, 8)
+	waitCond(t, "all six seqs at the stub", func() bool {
+		for seq := uint64(0); seq < 6; seq++ {
+			pkt := wire.MonoObjectPacket{Pose: &pose}
+			if seq != 2 {
+				pkt.Audio = append(buf[:0], audio(seq)...) // reused buffer, like an encoder's
+			}
+			if err := red.WriteMonoObject(seq, &pkt); err != nil {
+				t.Fatal(err)
+			}
+			pkt.Redundancy = nil
+			if err := plain.WriteMonoObject(seq, &pkt); err != nil {
+				t.Fatal(err)
+			}
+		}
+		e1.mu.Lock()
+		defer e1.mu.Unlock()
+		seen := map[uint64]bool{}
+		for _, p := range e1.packets {
+			seen[p.seq] = true
+		}
+		return len(seen) == 5 // audio-bearing seqs only: 0,1,3,4,5
+	})
+
+	e1.mu.Lock()
+	defer e1.mu.Unlock()
+	want := map[uint64]uint64{3: 1, 5: 3} // seq → referenced seq
+	for _, p := range e1.packets {
+		if p.audio[1] != byte(p.seq) {
+			t.Fatalf("seq %d carries audio tag %d", p.seq, p.audio[1])
+		}
+		ref, ok := want[p.seq]
+		if !ok {
+			if p.red != nil {
+				t.Fatalf("seq %d: unexpected redundancy (offset %d) — reference below 0 or pose-only", p.seq, p.red.Offset)
+			}
+			continue
+		}
+		if p.red == nil || p.red.Offset != 2 || !bytes.Equal(p.red.Audio, audio(ref)) {
+			t.Fatalf("seq %d: redundancy %+v, want offset 2 copy of seq %d", p.seq, p.red, ref)
+		}
+	}
+	e2.mu.Lock()
+	defer e2.mu.Unlock()
+	for _, p := range e2.packets {
+		if p.red != nil {
+			t.Fatalf("undeclared entity sent redundancy at seq %d", p.seq)
 		}
 	}
 }

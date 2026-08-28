@@ -6,7 +6,7 @@
 type PresenceHandler = (groupId, msg) => void;
 ```
 
-Defined in: [src/lasa/client.ts:51](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/client.ts#L51)
+Defined in: [src/lasa/client.ts:49](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/client.ts#L49)
 
 Receives each presence packet with its datagram group id (see [LasaClient.subscribePresence](../classes/LasaClient.md#subscribepresence)).
 

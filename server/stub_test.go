@@ -37,6 +37,7 @@ type stubEntity struct {
 }
 
 type stubPacket struct {
+	red   *wire.Redundancy // copied; nil when the packet carried none
 	seq   uint64
 	audio []byte
 }
@@ -85,7 +86,11 @@ func (e *stubEntity) WritePacket(seq uint64, payload []byte) {
 		}
 	}
 	if pkt.Audio != nil {
-		e.packets = append(e.packets, stubPacket{seq: seq, audio: pkt.Audio})
+		sp := stubPacket{seq: seq, audio: pkt.Audio}
+		if pkt.Redundancy != nil {
+			sp.red = &wire.Redundancy{Offset: pkt.Redundancy.Offset, Audio: append([]byte(nil), pkt.Redundancy.Audio...)}
+		}
+		e.packets = append(e.packets, sp)
 	}
 	e.mu.Unlock()
 	select {

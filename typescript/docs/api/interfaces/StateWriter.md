@@ -2,7 +2,7 @@
 
 # Interface: StateWriter
 
-Defined in: src/lasa/base.ts:176
+Defined in: [src/lasa/base.ts:176](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L176)
 
 Anything that can publish upstream state ops — a [LasaClient](../classes/LasaClient.md), or a test double.
 
@@ -14,7 +14,7 @@ Anything that can publish upstream state ops — a [LasaClient](../classes/LasaC
 writeState(...msgs): Promise<void>;
 ```
 
-Defined in: src/lasa/base.ts:177
+Defined in: [src/lasa/base.ts:177](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L177)
 
 #### Parameters
 

@@ -6,7 +6,7 @@
 function pixiToLasa(position, rotation): Pose;
 ```
 
-Defined in: src/lasa/coordinates.ts:746
+Defined in: [src/lasa/coordinates.ts:746](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/coordinates.ts#L746)
 
 Convert a PixiJS position and rotation to a LASA pose.
 

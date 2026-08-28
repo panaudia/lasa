@@ -2,7 +2,7 @@
 
 # Class: BaseView
 
-Defined in: src/lasa/base.ts:428
+Defined in: [src/lasa/base.ts:428](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L428)
 
 A typed read view over a [Store](Store.md) whose prefixes include
 `lasa.`. Every call scans the store, which is the right shape for a
@@ -21,7 +21,7 @@ mid-sweep.
 new BaseView(store): BaseView;
 ```
 
-Defined in: src/lasa/base.ts:429
+Defined in: [src/lasa/base.ts:429](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L429)
 
 #### Parameters
 
@@ -41,7 +41,7 @@ Defined in: src/lasa/base.ts:429
 blockedClients(): BlockView[];
 ```
 
-Defined in: src/lasa/base.ts:477
+Defined in: [src/lasa/base.ts:477](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L477)
 
 Every blocked client.
 
@@ -57,7 +57,7 @@ Every blocked client.
 blockedRoles(): BlockView[];
 ```
 
-Defined in: src/lasa/base.ts:480
+Defined in: [src/lasa/base.ts:480](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L480)
 
 #### Returns
 
@@ -71,7 +71,7 @@ Defined in: src/lasa/base.ts:480
 channel(channel): object;
 ```
 
-Defined in: src/lasa/base.ts:485
+Defined in: [src/lasa/base.ts:485](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L485)
 
 Channel policy: muted flag and any set gain/attenuation override.
 
@@ -87,9 +87,9 @@ Channel policy: muted flag and any set gain/attenuation override.
 
 | Name | Type | Defined in |
 | ------ | ------ | ------ |
-| `attenuation?` | `number` | src/lasa/base.ts:485 |
-| `gain?` | `number` | src/lasa/base.ts:485 |
-| `muted` | `boolean` | src/lasa/base.ts:485 |
+| `attenuation?` | `number` | [src/lasa/base.ts:485](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L485) |
+| `gain?` | `number` | [src/lasa/base.ts:485](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L485) |
+| `muted` | `boolean` | [src/lasa/base.ts:485](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L485) |
 
 ***
 
@@ -99,7 +99,7 @@ Channel policy: muted flag and any set gain/attenuation override.
 channels(): string[];
 ```
 
-Defined in: src/lasa/base.ts:496
+Defined in: [src/lasa/base.ts:496](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L496)
 
 Every channel named by a live entity's membership or by channel policy, sorted.
 
@@ -115,7 +115,7 @@ Every channel named by a live entity's membership or by channel policy, sorted.
 clientBlock(clientId): BlockView | undefined;
 ```
 
-Defined in: src/lasa/base.ts:470
+Defined in: [src/lasa/base.ts:470](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L470)
 
 The client's block, or undefined when not blocked. Expiry is not evaluated here — the server's clock decides.
 
@@ -137,7 +137,7 @@ The client's block, or undefined when not blocked. Expiry is not evaluated here 
 entities(): EntityView[];
 ```
 
-Defined in: src/lasa/base.ts:432
+Defined in: [src/lasa/base.ts:432](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L432)
 
 Every live entity (marker present), in key order.
 
@@ -153,7 +153,7 @@ Every live entity (marker present), in key order.
 entity(id): EntityView | undefined;
 ```
 
-Defined in: src/lasa/base.ts:453
+Defined in: [src/lasa/base.ts:453](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L453)
 
 One entity, or undefined if its marker is absent.
 
@@ -175,7 +175,7 @@ One entity, or undefined if its marker is absent.
 isEntityMuted(entityId): boolean;
 ```
 
-Defined in: src/lasa/base.ts:465
+Defined in: [src/lasa/base.ts:465](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L465)
 
 Whether the space has muted the entity's source (§5).
 
@@ -197,7 +197,7 @@ Whether the space has muted the entity's source (§5).
 roleBlock(role): BlockView | undefined;
 ```
 
-Defined in: src/lasa/base.ts:473
+Defined in: [src/lasa/base.ts:473](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L473)
 
 #### Parameters
 

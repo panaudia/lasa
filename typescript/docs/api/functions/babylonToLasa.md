@@ -6,7 +6,7 @@
 function babylonToLasa(position, rotation): Pose;
 ```
 
-Defined in: src/lasa/coordinates.ts:494
+Defined in: [src/lasa/coordinates.ts:494](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/coordinates.ts#L494)
 
 Convert a Babylon.js position and rotation to a LASA pose.
 

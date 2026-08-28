@@ -6,7 +6,7 @@
 type EulerOrder = "XYZ" | "YXZ" | "ZXY" | "ZYX" | "YZX" | "XZY";
 ```
 
-Defined in: src/lasa/coordinates.ts:94
+Defined in: [src/lasa/coordinates.ts:94](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/coordinates.ts#L94)
 
 Intrinsic Euler application order, in the Three.js labelling. All
 six THREE.Euler orders are supported, so a THREE.Euler's own

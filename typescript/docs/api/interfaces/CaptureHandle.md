@@ -2,7 +2,7 @@
 
 # Interface: CaptureHandle
 
-Defined in: [src/lasa/client.ts:73](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/client.ts#L73)
+Defined in: [src/lasa/client.ts:80](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/client.ts#L80)
 
 A running capture, returned by [LasaClient.startCapture](../classes/LasaClient.md#startcapture).
 
@@ -14,7 +14,7 @@ A running capture, returned by [LasaClient.startCapture](../classes/LasaClient.m
 setPose(pose): void;
 ```
 
-Defined in: [src/lasa/client.ts:75](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/client.ts#L75)
+Defined in: [src/lasa/client.ts:82](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/client.ts#L82)
 
 Publish the entity's freshest pose — wait-free, call at any rate.
 
@@ -36,7 +36,7 @@ Publish the entity's freshest pose — wait-free, call at any rate.
 stop(): Promise<void>;
 ```
 
-Defined in: [src/lasa/client.ts:77](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/client.ts#L77)
+Defined in: [src/lasa/client.ts:84](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/client.ts#L84)
 
 Stops this entity's capture (same as [LasaClient.stopCapture](../classes/LasaClient.md#stopcapture)).
 

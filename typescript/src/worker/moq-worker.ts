@@ -20,16 +20,17 @@
 import { MoqConnection } from '../transport/connection.js';
 import { MoqSession } from '../transport/session.js';
 import { ConnectionState, MoqRole } from '../transport/types.js';
-import { parseObjectDatagram } from '../transport/moq-transport.js';
+import { encodeObjectDatagramInto, maxObjectDatagramSize, parseObjectDatagram } from '../transport/moq-transport.js';
 import { readSubgroupStream, SubgroupWriter } from '../transport/subgroups.js';
 import { connectionConfigParam } from '../lasa/setup.js';
-import { parseSink } from '../lasa/wire.js';
+import { encodeMonoObjectInto, parseSink } from '../lasa/wire.js';
+import { UplinkSequencer } from '../lasa/uplink.js';
 import { SinkReassembler } from '../audio/sink-reassembler.js';
 import { JitterBufferCore } from '../audio/jitter-buffer-core.js';
 import { CaptureRing } from '../audio/capture-ring.js';
 import { CaptureEncoder, type EncodedChunkLike, type FrameEncoder } from '../audio/capture-encoder.js';
 import { PoseCell } from '../audio/pose-cell.js';
-import type { MainToWorker, SetCaptureTrackCommand, SetSinkTrackCommand, WorkerToMain } from './protocol.js';
+import type { MainToWorker, PublishCommand, SetCaptureTrackCommand, SetSinkTrackCommand, WorkerToMain } from './protocol.js';
 
 // tsconfig lib is DOM (not WebWorker); type the worker globals locally.
 interface WorkerCtx {
@@ -86,6 +87,42 @@ function waitForEntityAlias(entityId: string, timeoutMs = 5000): Promise<number>
     });
     entityAliasWaiters.set(entityId, list);
   });
+}
+
+// Per-entity source-track sequencers: the one gapless seq counter and
+// the §5.1 redundancy ring each entity's sends share, whether they come
+// from a capture pipeline or a main-thread publish. Created on first
+// use at the entity's declared redundancy (from the connect config).
+const sources = new Map<string, UplinkSequencer>();
+let declaredRedundancy = new Map<string, number>();
+
+function sourceFor(entityId: string): UplinkSequencer {
+  let s = sources.get(entityId);
+  if (!s) {
+    s = new UplinkSequencer(declaredRedundancy.get(entityId) ?? 0);
+    sources.set(entityId, s);
+  }
+  return s;
+}
+
+// Publish path scratch (low rate — pose-only packets, raw-API audio):
+// framed once, then copied out because the transport's write may drain
+// after we return.
+const publishPayload = new Uint8Array(2 * 4000 + 64);
+const publishDatagram = new Uint8Array(maxObjectDatagramSize(publishPayload.length));
+
+/** One mono-object packet on an entity's source track, via its sequencer. */
+function handlePublish(cmd: PublishCommand): void {
+  if (!conn) return;
+  const alias = entityAliases.get(cmd.entityId);
+  if (alias === undefined) {
+    post({ type: 'notice', event: 'publish-dropped', detail: `${cmd.entityId}: source not subscribed yet` });
+    return;
+  }
+  const seq = sourceFor(cmd.entityId).next(cmd.packet);
+  const payloadLen = encodeMonoObjectInto(publishPayload, cmd.packet);
+  const n = encodeObjectDatagramInto(publishDatagram, alias, seq, 0n, 0, publishPayload.subarray(0, payloadLen));
+  conn.sendDatagram(publishDatagram.slice(0, n)).catch((err) => log('publish failed:', err));
 }
 
 // Per-entity capture pipelines (step 4): consumer ring + Opus encoder
@@ -204,6 +241,7 @@ async function handleConnect(cmd: Extract<MainToWorker, { type: 'connect' }>): P
     serverCertificateHashes: certHashOption(cmd.serverCertificateHashBase64),
   });
   session = new MoqSession(conn, debug);
+  declaredRedundancy = new Map((cmd.config.entities ?? []).map((e) => [e.id, e.redundancy ?? 0]));
 
   session.onIncomingSubscribe((namespace, trackAlias) => {
     if (namespace.length === 4 && namespace[1] === 'client' && namespace[3] === 'source') {
@@ -534,12 +572,15 @@ async function setCaptureTrackInner(cmd: SetCaptureTrackCommand): Promise<void> 
     sharedReadPos: cmd.sharedReadPos,
   });
   const ec = cmd.encoderConfig;
+  const sequencer = sourceFor(cmd.entityId);
+  if (ec.redundancy !== undefined) sequencer.setRedundancy(ec.redundancy);
   const encoder = new CaptureEncoder({
     ring,
     trackAlias,
     sampleRate: ec.sampleRate,
     numChannels: ec.numberOfChannels,
     poseCell: new PoseCell({ seq: cmd.poseSeq, values: cmd.poseValues }),
+    sequencer,
     // Inject the real WebCodecs encoder + AudioData (kept out of
     // CaptureEncoder so its logic stays unit-testable).
     makeEncoder: (onChunk: (chunk: EncodedChunkLike) => void): FrameEncoder => {
@@ -722,6 +763,13 @@ ctx.onmessage = (e: MessageEvent) => {
     case 'sendDatagram':
       if (conn) {
         conn.sendDatagram(cmd.bytes).catch((err) => log('sendDatagram failed:', err));
+      }
+      break;
+    case 'publish':
+      try {
+        handlePublish(cmd);
+      } catch (err) {
+        post({ type: 'notice', event: 'publish-dropped', detail: `${cmd.entityId}: ${String(err)}` });
       }
       break;
     case 'writeState':

@@ -6,7 +6,7 @@
 function lasaErrorName(code): string | null;
 ```
 
-Defined in: [src/lasa/errors.ts:57](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/errors.ts#L57)
+Defined in: [src/lasa/errors.ts:63](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/errors.ts#L63)
 
 Human-readable name for a §4.6 code (null outside the range).
 

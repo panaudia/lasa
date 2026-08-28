@@ -6,7 +6,7 @@
 function isIdentifier(s): boolean;
 ```
 
-Defined in: src/lasa/base.ts:83
+Defined in: [src/lasa/base.ts:83](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L83)
 
 Reports whether `s` matches the identifier grammar `[a-z0-9-]{1,128}` (`lasa-core.md` §2).
 

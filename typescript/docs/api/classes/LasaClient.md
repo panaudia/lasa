@@ -22,7 +22,7 @@ state over a single WebTransport session. Create one with
 close(): Promise<void>;
 ```
 
-Defined in: [src/lasa/client.ts:575](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/client.ts#L575)
+Defined in: [src/lasa/client.ts:589](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/client.ts#L589)
 
 Ends the session: stops every capture and sink, stops the state
 sync, and tears down the worker and transport. Idempotent.
@@ -87,7 +87,7 @@ the entity's source track (normally within the first RTTs).
 getCaptureOverflows(entityId): number | null;
 ```
 
-Defined in: [src/lasa/client.ts:488](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/client.ts#L488)
+Defined in: [src/lasa/client.ts:502](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/client.ts#L502)
 
 Capture-ring overflows for a capturing entity (each = a dropped quantum = an upstream gap), or null.
 
@@ -109,7 +109,7 @@ Capture-ring overflows for a capturing entity (each = a dropped quantum = an ups
 getSinkIngress(entityId): SinkIngress | null;
 ```
 
-Defined in: [src/lasa/client.ts:517](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/client.ts#L517)
+Defined in: [src/lasa/client.ts:531](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/client.ts#L531)
 
 Latest ingress health for a playing sink (updated ~2 s by the
 worker), or null before the first report. Distinguishes network
@@ -196,7 +196,7 @@ The source's AudioContext MUST run at 48 kHz (lasa-core.md §5: Opus,
 stopCapture(entityId): Promise<void>;
 ```
 
-Defined in: [src/lasa/client.ts:493](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/client.ts#L493)
+Defined in: [src/lasa/client.ts:507](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/client.ts#L507)
 
 Stops an entity's capture: flushes the worker encoder, removes the graph nodes.
 
@@ -218,7 +218,7 @@ Stops an entity's capture: flushes the worker encoder, removes the graph nodes.
 stopSink(entityId): Promise<void>;
 ```
 
-Defined in: [src/lasa/client.ts:502](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/client.ts#L502)
+Defined in: [src/lasa/client.ts:516](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/client.ts#L516)
 
 Stops a playing sink: worker decode ends, then the graph tears down.
 
@@ -240,7 +240,7 @@ Stops a playing sink: worker decode ends, then the graph tears down.
 subscribePresence(handler): Promise<void>;
 ```
 
-Defined in: [src/lasa/client.ts:546](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/client.ts#L546)
+Defined in: [src/lasa/client.ts:560](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/client.ts#L560)
 
 Subscribes the space presence track. The handler receives each
 packet's datagram group-id — part of the §7 receive contract
@@ -265,7 +265,7 @@ which applies the §7 rules once and maintains the roster.
 subscribeRoster(onUpdate?): Promise<PresenceRoster>;
 ```
 
-Defined in: [src/lasa/client.ts:564](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/client.ts#L564)
+Defined in: [src/lasa/client.ts:578](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/client.ts#L578)
 
 Subscribes presence and maintains a PresenceRoster from it — the
 §7 client rules (generation discard, per-index latest-wins, reset
@@ -292,7 +292,7 @@ subscribeSink(
 handler): Promise<void>;
 ```
 
-Defined in: [src/lasa/client.ts:524](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/client.ts#L524)
+Defined in: [src/lasa/client.ts:538](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/client.ts#L538)
 
 Subscribes an entity's sink track (own-or-granted per §3.1/§2).
 

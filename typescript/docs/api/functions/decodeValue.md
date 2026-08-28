@@ -6,7 +6,7 @@
 function decodeValue(bytes): BaseValue | undefined;
 ```
 
-Defined in: src/lasa/base.ts:57
+Defined in: [src/lasa/base.ts:57](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L57)
 
 Decodes a §1 value. Returns undefined for absent bytes, and for bytes
 that are not one of the three types — the profile says an invalid

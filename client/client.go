@@ -253,8 +253,21 @@ func (c *Client) handleSubscribe(w *moqtransport.SubscribeResponseWriter, m *moq
 		if err := w.Accept(); err != nil {
 			return
 		}
+		// The entity's own declaration (§4.2) sets the uplink redundancy
+		// offset — for ad-hoc entities it is right here in the config;
+		// a ticket-defined entity's declaration is in the ticket, which
+		// the client does not open, so it starts at 0 and the embedder
+		// may SetRedundancy to what the ticket declares.
+		pub := &EntityPublisher{w: w, declared: -1}
+		for _, e := range c.cfg.Entities {
+			if e.ID == ns.ID {
+				pub.declared = e.Redundancy
+				pub.red = NewUplinkRedundancy(e.Redundancy)
+				break
+			}
+		}
 		c.mu.Lock()
-		c.entityPubs[ns.ID] = &EntityPublisher{w: w}
+		c.entityPubs[ns.ID] = pub
 		c.entityCond.Broadcast()
 		c.mu.Unlock()
 	case ns.Kind == ident.KindClient && ns.ID == c.cfg.ClientID && m.Track == ident.TrackState:
@@ -303,14 +316,55 @@ func waitFor[T any](ctx context.Context, c *Client, get func() *T) (*T, error) {
 	}
 }
 
-// EntityPublisher publishes one entity's mono-object source.
+// EntityPublisher publishes one entity's mono-object source. It emits
+// uplink redundancy at the entity's declared offset (lasa-core.md
+// §4.2/§5.1, see UplinkRedundancy); the caller keeps one gapless seq
+// counter per entity across pose-only and audio packets so the ring
+// sees every seq.
 type EntityPublisher struct {
-	w       *moqtransport.SubscribeResponseWriter
+	w *moqtransport.SubscribeResponseWriter
+
+	mu      sync.Mutex // serialises writes: the ring and scratch are shared state
 	scratch []byte
+	// declared is the entity's §4.2 redundancy declaration as known to
+	// this client (−1 = not in cfg.Entities, i.e. ticket-defined).
+	declared int
+	red      *UplinkRedundancy
+}
+
+// ErrRedundancyBound reports a SetRedundancy above the entity's
+// declaration (an offset beyond it would be a §5.1 sender violation).
+var ErrRedundancyBound = errors.New("client: redundancy offset above the entity's declaration")
+
+// Redundancy is the uplink redundancy offset in force (0 = none).
+func (p *EntityPublisher) Redundancy() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return int(p.red.Offset())
+}
+
+// SetRedundancy changes the uplink redundancy offset. It may be lowered
+// freely and raised only to the entity's declaration: the declaration
+// is the bound the server provisioned for. For a ticket-defined entity
+// the client cannot see the declaration, so any offset 0–7 is
+// accepted and the embedder is trusted to stay within the ticket.
+func (p *EntityPublisher) SetRedundancy(offset int) error {
+	if offset < 0 || offset > 7 {
+		return fmt.Errorf("client: redundancy offset %d outside 0-7", offset)
+	}
+	if p.declared >= 0 && offset > p.declared {
+		return fmt.Errorf("%w: %d > %d", ErrRedundancyBound, offset, p.declared)
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.red = NewUplinkRedundancy(offset)
+	return nil
 }
 
 // WritePacket sends one already-encoded mono-object payload; seq is the
-// MoQ group id (the frame sequence, +1 per packet, no gaps).
+// MoQ group id (the frame sequence, +1 per packet, no gaps). This is
+// the raw path: no redundancy is attached (frame with UplinkRedundancy
+// yourself if you want it).
 func (p *EntityPublisher) WritePacket(seq uint64, payload []byte) error {
 	return p.w.SendDatagram(moqtransport.Object{
 		GroupID:              seq,
@@ -321,8 +375,14 @@ func (p *EntityPublisher) WritePacket(seq uint64, payload []byte) error {
 }
 
 // WriteMonoObject encodes and sends a mono-object packet, reusing an
-// internal scratch buffer. Not safe for concurrent use.
+// internal scratch buffer. When the publisher's redundancy offset is
+// above 0 it attaches the §5.1 repeat itself and replaces any
+// pkt.Redundancy the caller set; at offset 0 pkt goes out as given.
+// Safe for concurrent use; callers still own one gapless seq counter.
 func (p *EntityPublisher) WriteMonoObject(seq uint64, pkt *wire.MonoObjectPacket) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.red.Attach(seq, pkt)
 	var err error
 	if p.scratch, err = wire.AppendMonoObject(p.scratch[:0], pkt); err != nil {
 		return err

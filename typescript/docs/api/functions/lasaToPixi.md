@@ -6,7 +6,7 @@
 function lasaToPixi(pose): PixiPose;
 ```
 
-Defined in: src/lasa/coordinates.ts:759
+Defined in: [src/lasa/coordinates.ts:759](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/coordinates.ts#L759)
 
 Convert a LASA pose to a PixiJS position and rotation.
 Height (z) is discarded. Only yaw maps to 2D rotation; pitch and roll are ignored.

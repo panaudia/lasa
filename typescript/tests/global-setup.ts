@@ -46,7 +46,9 @@ function bootServer(bin: string, env: NodeJS.ProcessEnv, label: string): Promise
       if (m) {
         certHash = m[1];
       }
-      if (seen.includes('panaudia-server: WebTransport at')) {
+      // Readiness: the slog line since 2026-08-25 ("panaudia-server:
+      // listening"); the pre-slog text is kept for older binaries.
+      if (seen.includes('panaudia-server: listening') || seen.includes('panaudia-server: WebTransport at')) {
         clearTimeout(timer);
         resolveReady({ child, certHash });
       }
@@ -90,6 +92,7 @@ export default async function globalSetup(): Promise<void> {
       ...baseEnv,
       PANAUDIA_PORT: '44443',
       PANAUDIA_ALLOW_UNTICKETED: 'true', // open space is an explicit opt-in
+      PANAUDIA_HTTP_PORT: '44480', // /stats for specs that read the ingress counters
     },
     'open'
   );

@@ -86,6 +86,14 @@ describe('WorkerTransport', () => {
     expect(port.sent[0]!.type).toBe('sendDatagram');
   });
 
+  it('publish is fire-and-forget and carries the entity id, not a seq', () => {
+    const { port, transport } = rig();
+    const pose = { x: 1, y: 2, z: 3, yaw: 0, pitch: 0, roll: 0 };
+    transport.publish('alice', { pose });
+    expect(port.sent).toHaveLength(1);
+    expect(port.sent[0]).toEqual({ type: 'publish', entityId: 'alice', packet: { pose } });
+  });
+
   it('close resolves the reply, rejects stragglers, and terminates the worker', async () => {
     const { port, transport } = rig();
     const straggler = transport.subscribe(['ns'], 't');

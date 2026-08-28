@@ -23,6 +23,7 @@ import type {
 import { LasaRejectionError, isLasaRejectionCode } from '../lasa/errors.js';
 import type { CaptureHandoff } from '../audio/capture.js';
 import type { LasaConnectionConfig } from '../lasa/setup.js';
+import type { MonoObjectPacket } from '../lasa/wire.js';
 import type { JitterBufferCoreConfig } from '../audio/jitter-buffer-core.js';
 
 /** The minimal Worker surface we use (real Worker, or a test fake). */
@@ -187,6 +188,11 @@ export class WorkerTransport {
    */
   sendDatagram(bytes: Uint8Array): void {
     this.port.postMessage({ type: 'sendDatagram', bytes } satisfies MainToWorker);
+  }
+
+  /** Fire-and-forget: one mono-object packet on an entity's source track (the worker sequences it). */
+  publish(entityId: string, packet: MonoObjectPacket): void {
+    this.port.postMessage({ type: 'publish', entityId, packet } satisfies MainToWorker);
   }
 
   async writeState(payloads: Uint8Array[]): Promise<void> {

@@ -6,7 +6,7 @@
 function lasaToPlaycanvas(pose): Vec3Pose;
 ```
 
-Defined in: src/lasa/coordinates.ts:599
+Defined in: [src/lasa/coordinates.ts:599](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/coordinates.ts#L599)
 
 Convert a LASA pose to a PlayCanvas position and rotation.
 

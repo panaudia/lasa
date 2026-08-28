@@ -6,7 +6,7 @@
 function lasaToUnreal(pose): UnrealPose;
 ```
 
-Defined in: src/lasa/coordinates.ts:703
+Defined in: [src/lasa/coordinates.ts:703](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/coordinates.ts#L703)
 
 Convert a LASA pose to an Unreal Engine position and FRotator.
 

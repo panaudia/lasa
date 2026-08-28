@@ -9,7 +9,7 @@ function threejsToLasa(
    order?): Pose;
 ```
 
-Defined in: src/lasa/coordinates.ts:461
+Defined in: [src/lasa/coordinates.ts:461](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/coordinates.ts#L461)
 
 Convert a Three.js position and rotation to a LASA pose.
 

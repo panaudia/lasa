@@ -81,6 +81,10 @@ memory: the API is small and specific, and most mistakes are one of the
 - **Permission is the server's.** A write the caller's role does not
   allow is silently dropped; do not offer UI for actions the role
   forbids.
+- **Never sequence packets yourself.** `publisher.publish(packet)`
+  takes no `seq`: the worker owns one gapless counter per entity
+  track, shared with `startCapture`, and attaches the uplink
+  redundancy repeat at the entity's declared offset.
 - **Teardown.** `client.close()` stops every capture and sink, ends
   state sync and tears down the worker; close the capture
   `AudioContext` yourself. `onClosed` fires for a session that ends
@@ -95,7 +99,7 @@ memory: the API is small and specific, and most mistakes are one of the
 |---|---|
 | Join a space, talk, listen, list who is there | `examples/minimal/src/main.ts` |
 | Tickets, roles, rejection handling | `docs/connecting.md`; rejection table with `LASA_ERR` |
-| Microphone selection, stereo/DAW capture (one entity per channel), quality/redundancy | `docs/audio.md`; `selectBestMicrophone` |
+| Microphone selection, stereo/DAW capture (one entity per channel), quality/redundancy (both directions: the sink buffer and the uplink repeats) | `docs/audio.md`; `selectBestMicrophone` |
 | Ambisonic sinks (`ambi2`/`ambi3`) and the raw packet API | `docs/audio.md`, "The raw packet API" |
 | Presence roster, loudness, head-frame entities | `docs/presence.md`; `RosterEntry` |
 | Application state, groups, cursors | `docs/state.md` |

@@ -37,7 +37,10 @@ export async function audioRun(url: string, certHashBase64?: string): Promise<Au
       spaceId: 'main',
       clientId: 'ts-audio',
       entities: [
-        { id: 'e-ts-a', name: 'TS Speaker' },
+        // Declared redundancy: the browser emits §5.1 repeats on its
+        // uplink, and the server must accept them (malformed packets
+        // are discarded, which would silence the round-trip).
+        { id: 'e-ts-a', name: 'TS Speaker', redundancy: 2 },
         { id: 'e-ts-b', name: 'TS Listener' },
       ],
       serverCertificateHashBase64: certHashBase64,
@@ -76,13 +79,12 @@ export async function audioRun(url: string, certHashBase64?: string): Promise<Au
     step('sink-subscribed');
 
     // Encoder: 440 Hz mono at 5 ms frames, published at ~real cadence.
-    let seq = 0n;
     const pose = { x: 0, y: 1, z: 0, yaw: 0, pitch: 0, roll: 0 };
     const encoder = new AudioEncoder({
       output: (chunk: EncodedAudioChunk) => {
         const bytes = new Uint8Array(chunk.byteLength);
         chunk.copyTo(bytes);
-        void pubA.publish(seq++, { pose, audio: bytes });
+        void pubA.publish({ pose, audio: bytes }); // the worker sequences the track
       },
       error: (e: DOMException) => console.log('[audio] encoder error', e.message),
     });

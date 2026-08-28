@@ -6,7 +6,7 @@
 function aframeToLasa(position, rotation): Pose;
 ```
 
-Defined in: src/lasa/coordinates.ts:538
+Defined in: [src/lasa/coordinates.ts:538](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/coordinates.ts#L538)
 
 Convert an A-Frame position and rotation to a LASA pose.
 

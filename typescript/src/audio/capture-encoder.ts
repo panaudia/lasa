@@ -2,9 +2,12 @@
  * capture-encoder.ts — the worker-side per-entity SEND pipeline.
  * Descended from the old SDK's capture-encoder.ts (worker-capture-design
  * §6) with LASA framing: each Opus packet is framed as a MonoObjectPacket
- * (POSE + audio) and sent as an OBJECT_DATAGRAM whose groupId is the
+ * (POSE + audio, plus the §5.1 redundancy repeat when the entity
+ * declared one) and sent as an OBJECT_DATAGRAM whose groupId is the
  * gapless sequence number (lasa-core §5.2) — not the old
- * timestamp-ms/objectId scheme.
+ * timestamp-ms/objectId scheme. The seq and the repeat ring both come
+ * from the entity's {@link UplinkSequencer}, shared with the pose-only
+ * publish path so the two never run separate counters on one track.
  *
  * Pose freshness (Paul's head-rotation-latency rule): the pose is read
  * from the shared {@link PoseCell} in `handleChunk` — datagram-framing
@@ -22,8 +25,9 @@
 
 import type { CaptureRing } from './capture-ring.js';
 import { encodeObjectDatagramInto, maxObjectDatagramSize } from '../transport/moq-transport.js';
-import { encodeMonoObjectInto, type Pose } from '../lasa/wire.js';
+import { encodeMonoObjectInto, type MonoObjectPacket, type Pose } from '../lasa/wire.js';
 import { PoseCell } from './pose-cell.js';
+import type { UplinkSequencer } from '../lasa/uplink.js';
 
 /** Minimal view of an encoded Opus packet (WebCodecs `EncodedAudioChunk` duck type). */
 export interface EncodedChunkLike {
@@ -53,9 +57,11 @@ export interface CaptureEncoderConfig {
   numChannels: number;
   /** The entity's shared pose cell (read at framing time). */
   poseCell: PoseCell;
+  /** The entity's sequencer: the one seq counter and the redundancy ring. */
+  sequencer: UplinkSequencer;
   /** Publisher priority byte (0 = highest). Default 0. */
   publisherPriority?: number;
-  /** Upper bound on an encoded Opus packet (scratch sizing). Default 4000. */
+  /** Upper bound on an encoded Opus packet (scratch sizing; a redundant copy doubles it). Default 4000. */
   maxPayloadBytes?: number;
   /** Round-robin datagram buffer count. Default 8. */
   datagramPoolSize?: number;
@@ -77,6 +83,7 @@ export class CaptureEncoder {
   private readonly nc: number;
   private readonly priority: number;
   private readonly poseCell: PoseCell;
+  private readonly sequencer: UplinkSequencer;
   private readonly encoder: FrameEncoder;
   private readonly send: (bytes: Uint8Array) => void;
 
@@ -87,11 +94,11 @@ export class CaptureEncoder {
   private readonly dgPool: Uint8Array[]; // framed OBJECT_DATAGRAMs, round-robin
   private dgPoolIdx: number;
   private readonly pose: Pose = { x: 0, y: 0, z: 0, yaw: 0, pitch: 0, roll: 0 };
+  private readonly pkt: MonoObjectPacket = { pose: this.pose };
 
-  // Sequencing: input timestamp is a running sample count; the datagram
-  // groupId is the gapless packet sequence (§5.2), objectId always 0.
+  // Input timestamp is a running sample count; the datagram groupId is
+  // the gapless packet sequence (§5.2) from the sequencer, objectId 0.
   private samplesSent = 0;
-  private seq = 0n;
 
   // Observability.
   encodedBatches = 0;
@@ -105,12 +112,14 @@ export class CaptureEncoder {
     this.nc = cfg.numChannels;
     this.priority = cfg.publisherPriority ?? 0;
     this.poseCell = cfg.poseCell;
+    this.sequencer = cfg.sequencer;
     this.send = cfg.send;
 
     const maxPayload = cfg.maxPayloadBytes ?? 4000;
     this.pcmScratch = new Float32Array(cfg.ring.capacity * this.nc); // holds a full drain
     this.bytesScratch = new Uint8Array(maxPayload);
-    this.payloadScratch = new Uint8Array(maxPayload + 64); // + pose/flags/lengths headroom
+    // Two payloads when a redundant copy rides along, + pose/flags/lengths headroom.
+    this.payloadScratch = new Uint8Array(2 * maxPayload + 64);
     const poolSize = cfg.datagramPoolSize ?? 8;
     this.dgPool = [];
     for (let i = 0; i < poolSize; i++) {
@@ -156,16 +165,17 @@ export class CaptureEncoder {
     chunk.copyTo(this.bytesScratch);
     // Pose read at framing time — the freshness rule.
     this.poseCell.read(this.pose);
-    const payloadLen = encodeMonoObjectInto(this.payloadScratch, {
-      pose: this.pose,
-      audio: this.bytesScratch.subarray(0, size),
-    });
+    this.pkt.audio = this.bytesScratch.subarray(0, size);
+    // The sequencer stamps the seq and, at a declared offset, attaches
+    // the repeat of the frame `offset` packets back (§5.1).
+    const seq = this.sequencer.next(this.pkt);
+    const payloadLen = encodeMonoObjectInto(this.payloadScratch, this.pkt);
     const dg = this.dgPool[this.dgPoolIdx]!;
     this.dgPoolIdx = (this.dgPoolIdx + 1) % this.dgPool.length;
     const len = encodeObjectDatagramInto(
       dg,
       this.trackAlias,
-      this.seq++, // groupId = gapless packet sequence (§5.2)
+      seq, // groupId = gapless packet sequence (§5.2)
       0n,
       this.priority,
       this.payloadScratch.subarray(0, payloadLen)

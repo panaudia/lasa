@@ -55,13 +55,12 @@ export async function playoutRun(url: string, certHashBase64?: string): Promise<
     step('playout-started');
 
     // Tone publisher: 440 Hz mono at 5 ms frames, real cadence.
-    let seq = 0n;
     const pose = { x: 0, y: 1, z: 0, yaw: 0, pitch: 0, roll: 0 };
     const encoder = new AudioEncoder({
       output: (chunk: EncodedAudioChunk) => {
         const bytes = new Uint8Array(chunk.byteLength);
         chunk.copyTo(bytes);
-        void pubA.publish(seq++, { pose, audio: bytes });
+        void pubA.publish({ pose, audio: bytes }); // the worker sequences the track
       },
       error: (e: DOMException) => console.log('[playout] encoder error', e.message),
     });

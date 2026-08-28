@@ -17,6 +17,7 @@
  */
 
 import type { LasaConnectionConfig } from '../lasa/setup.js';
+import type { MonoObjectPacket } from '../lasa/wire.js';
 import type { JitterBufferCoreConfig } from '../audio/jitter-buffer-core.js';
 
 /** A subscribe/setup parameter in transferable form. */
@@ -57,6 +58,19 @@ export interface SubscribeCommand {
 export interface SendDatagramCommand {
   type: 'sendDatagram';
   bytes: Uint8Array;
+}
+
+/**
+ * Fire-and-forget: one mono-object packet on an entity's source track.
+ * The worker owns the entity's seq counter and redundancy ring (shared
+ * with a running capture on the same entity — lasa-core.md §5.1 allows
+ * exactly one gapless counter per track), frames it, and sends it.
+ * Dropped with a notice if the server has not subscribed the source yet.
+ */
+export interface PublishCommand {
+  type: 'publish';
+  entityId: string;
+  packet: MonoObjectPacket;
 }
 
 /**
@@ -112,6 +126,12 @@ export interface CaptureEncoderConfigWire {
   bitrate: number;
   /** Opus frame duration in microseconds (5000 = the LASA default). */
   frameDurationUs: number;
+  /**
+   * Uplink redundancy offset override for this entity (0–7); absent =
+   * the entity's declaration. Applied to the entity's sequencer, so it
+   * also governs pose-only publishes on the same entity.
+   */
+  redundancy?: number;
 }
 
 /**
@@ -157,6 +177,7 @@ export type MainToWorker =
   | ConnectCommand
   | SubscribeCommand
   | SendDatagramCommand
+  | PublishCommand
   | WriteStateCommand
   | SetSinkTrackCommand
   | ClearSinkTrackCommand
@@ -279,7 +300,8 @@ export interface NoticeEvent {
     | 'subgroup-accept-done'
     | 'subgroup-stream-error'
     | 'decode-error'
-    | 'encode-error';
+    | 'encode-error'
+    | 'publish-dropped';
   detail?: string;
 }
 

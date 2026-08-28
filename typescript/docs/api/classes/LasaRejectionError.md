@@ -2,7 +2,7 @@
 
 # Class: LasaRejectionError
 
-Defined in: [src/lasa/errors.ts:65](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/errors.ts#L65)
+Defined in: [src/lasa/errors.ts:71](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/errors.ts#L71)
 
 A LASA session rejection: the server deliberately closed the session
 with a §4.6 code. `code` is normative; `reason` is advisory.
@@ -19,7 +19,7 @@ with a §4.6 code. `code` is normative; `reason` is advisory.
 new LasaRejectionError(code, reason): LasaRejectionError;
 ```
 
-Defined in: [src/lasa/errors.ts:66](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/errors.ts#L66)
+Defined in: [src/lasa/errors.ts:72](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/errors.ts#L72)
 
 #### Parameters
 
@@ -42,5 +42,5 @@ Error.constructor
 
 | Property | Modifier | Type | Defined in |
 | ------ | ------ | ------ | ------ |
-| <a id="code"></a> `code` | `readonly` | `number` | [src/lasa/errors.ts:67](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/errors.ts#L67) |
-| <a id="reason"></a> `reason` | `readonly` | `string` | [src/lasa/errors.ts:68](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/errors.ts#L68) |
+| <a id="code"></a> `code` | `readonly` | `number` | [src/lasa/errors.ts:73](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/errors.ts#L73) |
+| <a id="reason"></a> `reason` | `readonly` | `string` | [src/lasa/errors.ts:74](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/errors.ts#L74) |

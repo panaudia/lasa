@@ -2,7 +2,7 @@
 
 # Interface: BlockView
 
-Defined in: src/lasa/base.ts:411
+Defined in: [src/lasa/base.ts:411](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L411)
 
 A block entry: `until` is null for forever, else the expiry.
 
@@ -10,5 +10,5 @@ A block entry: `until` is null for forever, else the expiry.
 
 | Property | Type | Defined in |
 | ------ | ------ | ------ |
-| <a id="id"></a> `id` | `string` | src/lasa/base.ts:412 |
-| <a id="until"></a> `until` | `Date` \| `null` | src/lasa/base.ts:413 |
+| <a id="id"></a> `id` | `string` | [src/lasa/base.ts:412](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L412) |
+| <a id="until"></a> `until` | `Date` \| `null` | [src/lasa/base.ts:413](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L413) |

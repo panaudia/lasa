@@ -14,7 +14,6 @@
  * this thread at all.
  */
 
-import { encodeObjectDatagramInto } from '../transport/moq-transport.js';
 import { SubgroupRouter } from '../transport/subgroups.js';
 import { DatagramRouter } from '../transport/datagram-router.js';
 import {
@@ -26,7 +25,6 @@ import {
   type LasaSetup,
 } from './setup.js';
 import {
-  encodeMonoObjectInto,
   parsePresence,
   parseSink,
   type MonoObjectPacket,
@@ -67,6 +65,15 @@ export interface CaptureOptions {
   bitrate?: number;
   /** Initial pose (default: home). Update live via the handle. */
   pose?: Pose;
+  /**
+   * Uplink redundancy offset for this entity (0–7). Defaults to the
+   * entity's declaration (`LasaEntity.redundancy`), which is also the
+   * ceiling: the server provisioned its ingest buffer from it, and an
+   * offset beyond it is a sender violation (lasa-core.md §5.1). Lower it
+   * to trade robustness for uplink bandwidth. For a ticket-defined
+   * entity the client cannot see the declaration and accepts 0–7.
+   */
+  redundancy?: number;
 }
 
 /** A running capture, returned by {@link LasaClient.startCapture}. */
@@ -126,14 +133,11 @@ export interface LasaClientOptions {
  * solos, runtime attrs — see {@link EntityControls}).
  */
 export class EntityPublisher {
-  private scratch = new Uint8Array(2048);
-  private frame = new Uint8Array(1500);
   private readonly controls: EntityControls;
 
   /** @internal Built by LasaClient. */
   constructor(
     private readonly transport: WorkerTransport,
-    private readonly alias: number,
     /** The entity this publisher owns. */
     readonly entityId: string,
     client: LasaClient
@@ -168,21 +172,17 @@ export class EntityPublisher {
   }
 
   /**
-   * Sends one mono-object packet with the gapless sequence number as
-   * the datagram group id (§5.2). The framed bytes are structured-cloned
-   * at postMessage, so the scratch is immediately reusable.
+   * Sends one mono-object packet on the entity's source track. The
+   * worker owns the track's gapless sequence (lasa-core.md §5.1: one
+   * counter per track, shared with a running capture on this entity)
+   * and attaches the uplink redundancy repeat at the entity's offset;
+   * any `redundancy` on `packet` is replaced when that offset is above
+   * 0 and passed through as given when it is 0. The packet is
+   * structured-cloned at postMessage, so its buffers are immediately
+   * reusable. Resolves once handed to the worker, not once sent.
    */
-  async publish(seq: bigint, packet: MonoObjectPacket): Promise<void> {
-    const payloadLen = encodeMonoObjectInto(this.frame, packet);
-    const n = encodeObjectDatagramInto(
-      this.scratch,
-      this.alias,
-      seq,
-      0n,
-      0,
-      this.frame.subarray(0, payloadLen)
-    );
-    this.transport.sendDatagram(this.scratch.subarray(0, n));
+  async publish(packet: MonoObjectPacket): Promise<void> {
+    this.transport.publish(this.entityId, packet);
   }
 }
 
@@ -254,7 +254,7 @@ export class LasaClient {
       // handled inside the worker, where its stream lives.)
       onIncomingSubscribe: ({ namespace, trackAlias }) => {
         if (namespace.length === 4 && namespace[1] === 'entity' && namespace[3] === 'source') {
-          client.resolvePublisher(namespace[2]!, new EntityPublisher(transport, trackAlias, namespace[2]!, client));
+          client.resolvePublisher(namespace[2]!, new EntityPublisher(transport, namespace[2]!, client));
         }
       },
       onDatagram: ({ trackAlias, groupId, objectId, payload }) => {
@@ -460,6 +460,19 @@ export class LasaClient {
   }
 
   private async startCaptureInner(entityId: string, opts: CaptureOptions): Promise<CaptureHandle> {
+    // The uplink half of the entity's redundancy declaration: the
+    // worker emits repeats at the declared offset by default; an
+    // explicit option may only lower it (the declaration is the bound
+    // the server provisioned for).
+    if (opts.redundancy !== undefined) {
+      if (!Number.isInteger(opts.redundancy) || opts.redundancy < 0 || opts.redundancy > 7) {
+        throw new RangeError(`redundancy ${opts.redundancy} outside 0-7`);
+      }
+      const declared = this.entityDefs.get(entityId)?.redundancy;
+      if (declared !== undefined && opts.redundancy > declared) {
+        throw new RangeError(`redundancy ${opts.redundancy} above the entity's declaration ${declared}`);
+      }
+    }
     const pipeline = await CapturePipeline.create(opts.source, { channelIndex: opts.channelIndex });
     try {
       await this.transport.setCaptureTrack(entityId, pipeline.getHandoff(), {
@@ -471,6 +484,7 @@ export class LasaClient {
         // extends timestamps by seq × 5 ms and redundancy offsets are
         // multiples of it. Not a caller option.
         frameDurationUs: 5000,
+        ...(opts.redundancy !== undefined ? { redundancy: opts.redundancy } : {}),
       });
     } catch (e) {
       pipeline.dispose();

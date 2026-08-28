@@ -2,7 +2,7 @@
 
 # Interface: UnrealPose
 
-Defined in: src/lasa/coordinates.ts:74
+Defined in: [src/lasa/coordinates.ts:74](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/coordinates.ts#L74)
 
 Unreal Engine pose (position + FRotator)
 
@@ -10,5 +10,5 @@ Unreal Engine pose (position + FRotator)
 
 | Property | Type | Defined in |
 | ------ | ------ | ------ |
-| <a id="position"></a> `position` | [`Vec3`](Vec3.md) | src/lasa/coordinates.ts:75 |
-| <a id="rotation"></a> `rotation` | [`FRotator`](FRotator.md) | src/lasa/coordinates.ts:76 |
+| <a id="position"></a> `position` | [`Vec3`](Vec3.md) | [src/lasa/coordinates.ts:75](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/coordinates.ts#L75) |
+| <a id="rotation"></a> `rotation` | [`FRotator`](FRotator.md) | [src/lasa/coordinates.ts:76](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/coordinates.ts#L76) |

@@ -6,7 +6,7 @@
 function baseView(store): BaseView;
 ```
 
-Defined in: src/lasa/base.ts:523
+Defined in: [src/lasa/base.ts:523](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L523)
 
 Builds a [BaseView](../classes/BaseView.md) over a store.
 

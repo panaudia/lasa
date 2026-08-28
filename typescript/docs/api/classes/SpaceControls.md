@@ -2,7 +2,7 @@
 
 # Class: SpaceControls
 
-Defined in: src/lasa/base.ts:258
+Defined in: [src/lasa/base.ts:258](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L258)
 
 Space-wide operations, reached as `client.space`. Each is gated by
 role on the server (`moderator` for entity mutes and client blocks,
@@ -21,7 +21,7 @@ space entity mute is the one moderation act on hearing.
 new SpaceControls(writer): SpaceControls;
 ```
 
-Defined in: src/lasa/base.ts:259
+Defined in: [src/lasa/base.ts:259](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L259)
 
 #### Parameters
 
@@ -41,7 +41,7 @@ Defined in: src/lasa/base.ts:259
 addHeardIn(entityId, channel): Promise<void>;
 ```
 
-Defined in: src/lasa/base.ts:320
+Defined in: [src/lasa/base.ts:320](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L320)
 
 Adds the entity's source to a channel (it is heard there).
 
@@ -64,7 +64,7 @@ Adds the entity's source to a channel (it is heard there).
 addHears(entityId, channel): Promise<void>;
 ```
 
-Defined in: src/lasa/base.ts:327
+Defined in: [src/lasa/base.ts:327](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L327)
 
 Adds the entity's sink to a channel (it hears there).
 
@@ -87,7 +87,7 @@ Adds the entity's sink to a channel (it hears there).
 blockClient(clientId, until?): Promise<void>;
 ```
 
-Defined in: src/lasa/base.ts:275
+Defined in: [src/lasa/base.ts:275](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L275)
 
 Terminates the client's live connection and refuses readmission
 until `until` (forever when omitted). Admin is unblockable.
@@ -111,7 +111,7 @@ until `until` (forever when omitted). Admin is unblockable.
 blockRole(role, until?): Promise<void>;
 ```
 
-Defined in: src/lasa/base.ts:288
+Defined in: [src/lasa/base.ts:288](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L288)
 
 Blocks every connection bearing the role (except admin).
 
@@ -134,7 +134,7 @@ Blocks every connection bearing the role (except admin).
 kickClient(clientId, forMs): Promise<void>;
 ```
 
-Defined in: src/lasa/base.ts:282
+Defined in: [src/lasa/base.ts:282](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L282)
 
 A block with a short expiry — "a kick is a block with a short expiry" (§5).
 
@@ -157,7 +157,7 @@ A block with a short expiry — "a kick is a block with a short expiry" (§5).
 muteChannel(channel): Promise<void>;
 ```
 
-Defined in: src/lasa/base.ts:298
+Defined in: [src/lasa/base.ts:298](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L298)
 
 A muted channel contributes nothing to audibility.
 
@@ -179,7 +179,7 @@ A muted channel contributes nothing to audibility.
 muteEntity(entityId): Promise<void>;
 ```
 
-Defined in: src/lasa/base.ts:264
+Defined in: [src/lasa/base.ts:264](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L264)
 
 Silences the entity's source in every render. Rendering only; the connection stays.
 
@@ -201,7 +201,7 @@ Silences the entity's source in every render. Rendering only; the connection sta
 removeHeardIn(entityId, channel): Promise<void>;
 ```
 
-Defined in: src/lasa/base.ts:323
+Defined in: [src/lasa/base.ts:323](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L323)
 
 #### Parameters
 
@@ -222,7 +222,7 @@ Defined in: src/lasa/base.ts:323
 removeHears(entityId, channel): Promise<void>;
 ```
 
-Defined in: src/lasa/base.ts:330
+Defined in: [src/lasa/base.ts:330](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L330)
 
 #### Parameters
 
@@ -243,7 +243,7 @@ Defined in: src/lasa/base.ts:330
 setChannelAttenuation(channel, attenuation): Promise<void>;
 ```
 
-Defined in: src/lasa/base.ts:310
+Defined in: [src/lasa/base.ts:310](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L310)
 
 Channel attenuation 0–3.0; the lowest set value across a pair's shared channels overrides the source's. `undefined` clears.
 
@@ -266,7 +266,7 @@ Channel attenuation 0–3.0; the lowest set value across a pair's shared channel
 setChannelGain(channel, gain): Promise<void>;
 ```
 
-Defined in: src/lasa/base.ts:305
+Defined in: [src/lasa/base.ts:305](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L305)
 
 Channel gain 0–3.0 (amplitude); the highest across a pair's shared channels wins. `undefined` clears.
 
@@ -292,7 +292,7 @@ setChannels(
 next): Promise<void>;
 ```
 
-Defined in: src/lasa/base.ts:339
+Defined in: [src/lasa/base.ts:339](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L339)
 
 Replaces the entity's memberships as one group: `current` is what
 the store holds now (see [BaseView.entity](BaseView.md#entity)), `next` the wanted
@@ -323,7 +323,7 @@ entity inaudible (§6) — a moderation act, so it is allowed.
 setDof(entityId, dof): Promise<void>;
 ```
 
-Defined in: src/lasa/base.ts:377
+Defined in: [src/lasa/base.ts:377](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L377)
 
 Degrees of freedom the space enforces at ingest: 6 free, 3 turn in place, 0 fixed (`moderator`).
 
@@ -346,7 +346,7 @@ Degrees of freedom the space enforces at ingest: 6 free, 3 turn in place, 0 fixe
 setPriority(entityId, priority): Promise<void>;
 ```
 
-Defined in: src/lasa/base.ts:371
+Defined in: [src/lasa/base.ts:371](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L371)
 
 Marks the entity's source as important to render well — sparingly (§6).
 
@@ -369,7 +369,7 @@ Marks the entity's source as important to render well — sparingly (§6).
 setRender(entityId, params): Promise<void>;
 ```
 
-Defined in: src/lasa/base.ts:357
+Defined in: [src/lasa/base.ts:357](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L357)
 
 Sets the given render parameters as one group; `undefined` fields are untouched, `null` clears to the default.
 
@@ -396,7 +396,7 @@ Sets the given render parameters as one group; `undefined` fields are untouched,
 unblockClient(clientId): Promise<void>;
 ```
 
-Defined in: src/lasa/base.ts:278
+Defined in: [src/lasa/base.ts:278](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L278)
 
 #### Parameters
 
@@ -416,7 +416,7 @@ Defined in: src/lasa/base.ts:278
 unblockRole(role): Promise<void>;
 ```
 
-Defined in: src/lasa/base.ts:291
+Defined in: [src/lasa/base.ts:291](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L291)
 
 #### Parameters
 
@@ -436,7 +436,7 @@ Defined in: src/lasa/base.ts:291
 unmuteChannel(channel): Promise<void>;
 ```
 
-Defined in: src/lasa/base.ts:301
+Defined in: [src/lasa/base.ts:301](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L301)
 
 #### Parameters
 
@@ -456,7 +456,7 @@ Defined in: src/lasa/base.ts:301
 unmuteEntity(entityId): Promise<void>;
 ```
 
-Defined in: src/lasa/base.ts:267
+Defined in: [src/lasa/base.ts:267](https://github.com/panaudia/lasa/blob/main/typescript/src/lasa/base.ts#L267)
 
 #### Parameters
 
