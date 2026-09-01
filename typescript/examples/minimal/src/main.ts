@@ -41,11 +41,14 @@ function setStatus(text: string): void {
   status.textContent = text;
 }
 
-// Everyone joins on a circle so two tabs are audibly apart. Positions
-// are metres; the pose's yaw faces the origin.
+// Everyone joins on a circle so two tabs are audibly apart. LASA
+// axes (docs/coordinates.md): x forward, y left, z up, so the floor
+// is the (x, y) plane. Metres; the pose's yaw faces the origin, as
+// angle − π rather than angle + π because the wire clamps angles
+// outside (−π, π] instead of wrapping them.
 function poseOnCircle(): { x: number; y: number; z: number; yaw: number; pitch: number; roll: number } {
   const angle = Math.random() * Math.PI * 2;
-  return { x: 2 * Math.cos(angle), y: 0, z: 2 * Math.sin(angle), yaw: angle + Math.PI, pitch: 0, roll: 0 };
+  return { x: 2 * Math.cos(angle), y: 2 * Math.sin(angle), z: 0, yaw: angle - Math.PI, pitch: 0, roll: 0 };
 }
 
 async function join(): Promise<void> {
@@ -115,7 +118,7 @@ function render(): void {
       const db = loudnessToDBFS(e.loudness);
       const level = db === null ? 'silent' : `${db.toFixed(0)} dBFS`;
       const cls = e.id === entityId ? ' class="me"' : '';
-      return `<tr${cls}><td>${e.id}</td><td>${name}</td><td>${e.pose.x.toFixed(1)}</td><td>${e.pose.z.toFixed(1)}</td><td>${level}</td></tr>`;
+      return `<tr${cls}><td>${e.id}</td><td>${name}</td><td>${e.pose.x.toFixed(1)}</td><td>${e.pose.y.toFixed(1)}</td><td>${level}</td></tr>`;
     });
   rosterBody.innerHTML = rows.join('');
 }
