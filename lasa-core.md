@@ -178,7 +178,8 @@ establishment, as a setup parameter on CLIENT_SETUP. [C-4.1-1]
 { "client_id": <identifier>,
   "ticket":    <JWT string>,        (optional)
   "entities":  [Entity, ...],       (see entity.schema.json)
-  "setups":    [Setup, ...] }       (see setup.schema.json; requires ticket)
+  "setups":    [Setup, ...],        (see setup.schema.json; requires ticket)
+  "lockstep":  <boolean> }          (optional, default false; §4.2)
 ```
 
 At least one of `entities` and `setups` MUST be present, and both MAY
@@ -272,6 +273,28 @@ ticket-defined entities carry them authorship-guaranteed. Whether
 ad-hoc entities may claim elevated quality or sink redundancy, which
 cost the space per-entity buffer memory and egress bandwidth
 respectively, is deployment policy.
+
+**Lockstep.** A Connection Config MAY set `lockstep` to `true`. It is
+one boolean for the whole connection, default `false`, and it
+declares that every entity the connection instantiates publishes its
+source track in step with the others: the members share one frame
+counter, so equal group-ids across members name one capture frame
+(§5.2). [C-4.2-12] The set is every entity the connection
+instantiates, ticket-defined or ad-hoc, head-frame entities included,
+and with fewer than two entities the flag has no effect. The space
+buffers a lockstep connection's sources as one stream and provisions
+that buffer at the maximum of the members' `quality` and `redundancy`
+declarations, so one member declaring a higher level buys the whole
+set its latency. [C-4.2-13] Each member's own `redundancy` keeps
+bounding its own sender. Lockstep describes one capture device.
+Sources captured on separate clocks cannot be put in step by
+declaration, and a client SHOULD NOT declare it for them. [C-4.2-14]
+
+> *Note: the flag lives on the config rather than in the ticket or
+> in state because it costs the space nothing the per-entity
+> declarations did not already authorise, the latency it adds is
+> paid by the declaring client, and the buffer must be provisioned
+> before the first packet (`plan/lockstep.md`).*
 
 ### 4.3 Tickets
 
@@ -528,6 +551,14 @@ receiver state (latest-wins ids, jitter buffers, redundancy history, ts
 anchors) is scoped to the (MoQ session, track) instance and resets with
 it either way. [C-5.2-3] Nothing in the packet format signals a
 reconnect. The new MoQ session is the signal.
+
+On a lockstep connection (§4.2) the members' counters are one. Every
+member emits a packet at every frame, a flags `0x00` packet when it
+has neither audio nor pose to send (§5.3), so that the no-gaps rule
+holds on every track and the counters never diverge, and all members
+restart at 0 together with the session. [C-5.2-4] Nothing on the wire
+marks the relation. Identical group-ids on different tracks are
+ordinary MoQ, and the declaration is what gives them meaning.
 
 ### 5.3 Layouts
 

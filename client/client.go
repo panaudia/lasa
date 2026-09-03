@@ -39,6 +39,11 @@ type Config struct {
 	Ticket   string           // optional
 	Entities []connect.Entity // nil = absent; empty non-nil = observer
 	Setups   []connect.Setup  // requires Ticket
+	// Lockstep declares one frame counter across every entity source
+	// track (lasa-core.md §4.2). The counter is the caller's: every
+	// EntityPublisher must be written with the same seq per frame,
+	// and a member with nothing to send writes a flags 0x00 packet.
+	Lockstep bool
 
 	TLS *tls.Config
 	// Store, when set, backs the state subscription (SyncState).
@@ -230,6 +235,9 @@ func configJSON(cfg Config) ([]byte, error) {
 	}
 	if cfg.Setups != nil {
 		m["setups"] = cfg.Setups
+	}
+	if cfg.Lockstep {
+		m["lockstep"] = true
 	}
 	return json.Marshal(m)
 }

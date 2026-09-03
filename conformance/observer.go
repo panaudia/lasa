@@ -58,6 +58,13 @@ type TrackReport struct {
 	Instance int // 1 for the first connection carrying the entity
 	Declared int // the entity's declared redundancy (§4.2)
 
+	// Lockstep is set when the connection declared lockstep with at
+	// least two entities: this track's index and the set's size, and
+	// the widest spread ever seen between the members' newest ids
+	// while this instance was live. In step means a spread that stays
+	// within the receiver's tolerance (C-5.2-4).
+	Lockstep *LockstepEvidence
+
 	Received  int
 	First     uint64
 	Last      uint64
@@ -78,17 +85,49 @@ type TrackReport struct {
 	RefUnseen             int // the referenced packet never arrived, so the copy could not be compared
 }
 
+// LockstepEvidence is the cross-track evidence for one lockstep set.
+type LockstepEvidence struct {
+	Index     int
+	Count     int
+	MaxSpread uint64
+}
+
 const observerHistory = 64
+
+// lockGroup is one connection instance's lockstep set: the newest id
+// seen on any member, and the most an arriving packet has trailed it.
+// The same definition as the server's gather stage reports, so the
+// two agree by construction: 0 in step, d for a member d frames
+// behind, and the release rule fires at 8.
+type lockGroup struct {
+	mu      sync.Mutex
+	started bool
+	newest  uint64
+	spread  uint64
+}
+
+func (g *lockGroup) note(entity string, seq uint64) uint64 {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	if !g.started || seq > g.newest {
+		g.newest, g.started = seq, true
+	}
+	if s := g.newest - seq; s > g.spread {
+		g.spread = s
+	}
+	return g.spread
+}
 
 type observingBackend struct {
 	mu        sync.Mutex
 	collector *presence.Collector
 	byEntity  map[string][]*observedTrack
-	stub      *stubBackend // sinks and presence, so a client under test may also listen
+	groups    map[string]*lockGroup // by client id, the live connection's set
+	stub      *stubBackend          // sinks and presence, so a client under test may also listen
 }
 
 func newObservingBackend() *observingBackend {
-	return &observingBackend{byEntity: map[string][]*observedTrack{}, stub: newStubBackend()}
+	return &observingBackend{byEntity: map[string][]*observedTrack{}, groups: map[string]*lockGroup{}, stub: newStubBackend()}
 }
 
 func (b *observingBackend) attach(c *presence.Collector) {
@@ -109,6 +148,7 @@ type observedTrack struct {
 	seen    [observerHistory]uint64
 	valid   [observerHistory]bool
 	slot    *presence.Slot
+	group   *lockGroup
 }
 
 func (b *observingBackend) EntityJoined(clientID string, e connect.ResolvedEntity) (server.EntityHandler, error) {
@@ -116,6 +156,16 @@ func (b *observingBackend) EntityJoined(clientID string, e connect.ResolvedEntit
 	b.mu.Lock()
 	b.byEntity[e.ID] = append(b.byEntity[e.ID], tr)
 	tr.rep.Instance = len(b.byEntity[e.ID])
+	if e.Lockstep != nil {
+		tr.rep.Lockstep = &LockstepEvidence{Index: e.Lockstep.Index, Count: e.Lockstep.Count}
+		g, ok := b.groups[clientID]
+		if !ok || e.Lockstep.Index == 0 {
+			// The first member of a new instance opens a new set.
+			g = &lockGroup{}
+			b.groups[clientID] = g
+		}
+		tr.group = g
+	}
 	if b.collector != nil {
 		tr.slot = b.collector.Register(e.ID, e.Frame == "head", func() wire.Loudness { return 255 })
 	}
@@ -148,6 +198,9 @@ func (t *observedTrack) WritePacket(seq uint64, payload []byte) {
 	defer t.mu.Unlock()
 	r := &t.rep
 	r.Received++
+	if t.group != nil {
+		r.Lockstep.MaxSpread = t.group.note(r.EntityID, seq)
+	}
 	if !t.started {
 		t.started = true
 		r.First, r.Last = seq, seq

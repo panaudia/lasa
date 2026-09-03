@@ -11,6 +11,9 @@ type ConnectionConfig struct {
 	Ticket   string   `json:"ticket,omitempty"`
 	Entities []Entity `json:"entities,omitempty"`
 	Setups   []Setup  `json:"setups,omitempty"`
+	// Lockstep declares that every entity source track on this
+	// connection shares one frame counter (lasa-core.md §4.2, §5.2).
+	Lockstep bool `json:"lockstep,omitempty"`
 
 	hasEntities bool
 	hasSetups   bool

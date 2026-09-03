@@ -2,6 +2,7 @@ package conformance
 
 import (
 	"context"
+	"fmt"
 	"testing"
 	"time"
 
@@ -116,5 +117,67 @@ func publishPattern(t *testing.T, c *client.Client, n int) {
 				t.Fatal(err)
 			}
 		}
+	}
+}
+
+// TestUplinkLockstep covers C-4.2-12 and C-5.2-4 from the observer: on
+// a lockstep connection every member's counter runs together, every
+// member emits at every frame, and a reconnect restarts them together.
+// The Go client leaves the counter to its caller, so publishPattern's
+// one seq per tick is the in-step sender here.
+func TestUplinkLockstep(t *testing.T) {
+	if externalOnly() {
+		t.Skip("the observer hosts its own space")
+	}
+	for _, tr := range []Transport{TransportQUIC, TransportWebTransport} {
+		t.Run(string(tr), func(t *testing.T) {
+			obs, err := StartObserver(tr, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			t.Cleanup(obs.Close)
+			f := obs.Fixture
+			entities := []connect.Entity{{ID: "up-red", Name: "R", Redundancy: 2}, {ID: "up-plain", Name: "P"}}
+			cfg := configFor(t, f, party{clientID: "lock-c", entities: entities})
+			cfg.Lockstep = true
+			c, err := dial(t, f, cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			publishPattern(t, c, 300)
+			var red, plain TrackReport
+			waitCond(t, "300 packets on both members", func() bool {
+				rr, pr := obs.Reports("up-red"), obs.Reports("up-plain")
+				if len(rr) == 0 || len(pr) == 0 {
+					return false
+				}
+				red, plain = rr[len(rr)-1], pr[len(pr)-1]
+				return red.Last >= 299 && plain.Last >= 299
+			})
+			t.Log(red.Summary())
+			if red.Lockstep == nil || plain.Lockstep == nil {
+				t.Fatal("the observer did not see the lockstep declaration")
+			}
+			Check(t, "C-4.2-12", red.Lockstep.Count == 2 && plain.Lockstep.Count == 2 && red.Lockstep.Index != plain.Lockstep.Index,
+				"set stamped as %+v and %+v", red.Lockstep, plain.Lockstep)
+			dense := red.Received == plain.Received && red.Gaps == 0 && plain.Gaps == 0 && red.Empty > 0
+			Check(t, "C-5.2-4", dense && red.Lockstep.MaxSpread <= 2 && red.First == 0 && plain.First == 0,
+				"in step: received %d/%d, gaps %d/%d, empty %d, max spread %d ids", red.Received, plain.Received, red.Gaps, plain.Gaps, red.Empty, red.Lockstep.MaxSpread)
+			report.record("C-5.2-4", OutcomePass, fmt.Sprintf("%s: max spread %d ids over 300 frames", f.Name, red.Lockstep.MaxSpread))
+			_ = c.Close()
+			c2, err := dial(t, f, cfg)
+			if err != nil {
+				t.Fatal(err)
+			}
+			publishPattern(t, c2, 50)
+			waitCond(t, "second instance in step from zero", func() bool {
+				rr, pr := obs.Reports("up-red"), obs.Reports("up-plain")
+				if len(rr) < 2 || len(pr) < 2 {
+					return false
+				}
+				a, b := rr[1], pr[1]
+				return a.Last >= 49 && b.Last >= 49 && a.First == 0 && b.First == 0 && a.Lockstep != nil && a.Lockstep.MaxSpread <= 2
+			})
+		})
 	}
 }

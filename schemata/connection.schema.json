@@ -31,6 +31,9 @@
             "items": {
                 "$ref": "setup.schema.json"
             }
+        },
+        "lockstep": {
+            "type": "boolean"
         }
     }
 }

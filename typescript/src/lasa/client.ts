@@ -23,6 +23,7 @@ import {
   type LasaConnectionConfig,
   type LasaEntity,
   type LasaSetup,
+  assertLockstepSupported,
 } from './setup.js';
 import {
   parsePresence,
@@ -112,6 +113,13 @@ export interface LasaClientOptions {
   entities?: LasaEntity[];
   /** Instantiations of ticket-defined entities, by id. */
   setups?: LasaSetup[];
+  /**
+   * Declare every entity's source track in step (lasa-core.md §4.2).
+   * The client does not yet share one counter across entities, so
+   * the declaration is honoured only for a single capture pipeline
+   * feeding every entity; see plan/lockstep.md §4.3.
+   */
+  lockstep?: boolean;
   /** Dev-cert pinning (base64 SHA-256 from the server boot log). */
   serverCertificateHashBase64?: string;
   /** Console logging from the client, worker and audio graph. */
@@ -239,6 +247,12 @@ export class LasaClient {
    * subscribes them back.
    */
   static async connect(opts: LasaClientOptions): Promise<LasaClient> {
+    assertLockstepSupported({
+      clientId: opts.clientId,
+      entities: opts.entities,
+      setups: opts.setups,
+      lockstep: opts.lockstep,
+    });
     const transport = WorkerTransport.spawn(createMoqWorker());
     const client = new LasaClient(transport, opts.spaceId, opts.clientId, opts.debug ?? false);
     for (const e of opts.entities ?? []) client.entityDefs.set(e.id, e);
@@ -289,6 +303,7 @@ export class LasaClient {
       ticket: opts.ticket,
       entities: opts.entities,
       setups: opts.setups,
+      lockstep: opts.lockstep,
     };
     try {
       await transport.connect(opts.url, config, opts.serverCertificateHashBase64, opts.debug ?? false);

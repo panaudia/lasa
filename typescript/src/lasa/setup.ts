@@ -68,6 +68,29 @@ export interface LasaConnectionConfig {
   entities?: LasaEntity[];
   /** Instantiations of ticket-defined entities. */
   setups?: LasaSetup[];
+  /**
+   * One frame counter across every entity source track (lasa-core.md
+   * §4.2, §5.2). Only for entities captured together on one device.
+   */
+  lockstep?: boolean;
+}
+
+/**
+ * The lockstep declaration this client can honour today: none with more
+ * than one entity. The uplink is one pipeline per entity, each with its
+ * own capture and counter, so two entities cannot share a frame index
+ * (lasa-core.md §5.2, plan/lockstep.md §4.3). Throws rather than
+ * letting a page declare an obligation it would silently violate. With
+ * zero or one entity the flag has no effect and passes.
+ */
+export function assertLockstepSupported(cfg: LasaConnectionConfig): void {
+  if (cfg.lockstep !== true) return;
+  const n = (cfg.entities?.length ?? 0) + (cfg.setups?.length ?? 0);
+  if (n > 1) {
+    throw new Error(
+      `lockstep with ${n} entities is not supported by this client: its uplink runs one capture and one counter per entity, so the tracks cannot share a frame index (plan/lockstep.md). Use the bridge for multi-channel lockstep, or declare one entity.`
+    );
+  }
 }
 
 const textEncoder = new TextEncoder();
@@ -83,6 +106,9 @@ export function connectionConfigParam(cfg: LasaConnectionConfig): Kvp {
   }
   if (cfg.setups !== undefined) {
     json['setups'] = cfg.setups;
+  }
+  if (cfg.lockstep === true) {
+    json['lockstep'] = true;
   }
   return {
     type: SETUP_PARAM_CONNECTION_CONFIG,

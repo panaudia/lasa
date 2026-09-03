@@ -14,6 +14,23 @@ type ResolvedEntity struct {
 	Entity
 	Signed     bool
 	SetupAttrs map[string]any
+	// Lockstep is set when the connection declared lockstep and has
+	// at least two entities: this entity's position in the set and
+	// the set's size (lasa-core.md §4.2). nil otherwise. The backend
+	// creates one buffer per set, provisioned at the members' maximum
+	// quality and redundancy (plan/lockstep.md §4.6).
+	Lockstep *LockstepMember
+}
+
+// LockstepMember places an entity in its connection's lockstep set.
+// Quality and Redundancy are the set's maxima over every member (core
+// §4.2: the shared buffer is provisioned at the maximum), stamped here
+// because only the resolver sees the whole set at once.
+type LockstepMember struct {
+	Index      int
+	Count      int
+	Quality    int
+	Redundancy int
 }
 
 // Resolved is the outcome of admission resolution: the connection's
@@ -27,6 +44,9 @@ type Resolved struct {
 	Roles       []string
 	Permissions Permissions
 	Entities    []ResolvedEntity
+	// Lockstep reports the config's declaration as presented, whether
+	// or not the entity count gives it effect.
+	Lockstep bool
 	// Transport is the connection's transport kind, stamped by the
 	// server shell after resolution: "quic" (native clients) or
 	// "webtransport" (browsers can use nothing else). Backends may use
@@ -110,5 +130,15 @@ func Resolve(cfg *ConnectionConfig, ticket *Ticket, adHocPermitted bool) (*Resol
 		r.Entities = append(r.Entities, ResolvedEntity{Entity: *e})
 	}
 
+	r.Lockstep = cfg.Lockstep
+	if cfg.Lockstep && len(r.Entities) >= 2 {
+		q, red := 0, 0
+		for _, e := range r.Entities {
+			q, red = max(q, e.Quality), max(red, e.Redundancy)
+		}
+		for i := range r.Entities {
+			r.Entities[i].Lockstep = &LockstepMember{Index: i, Count: len(r.Entities), Quality: q, Redundancy: red}
+		}
+	}
 	return r, nil
 }

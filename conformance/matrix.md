@@ -93,6 +93,9 @@ file together, and the test refuses the pair when they differ.*
 | C-4.2-9 | The space SHOULD honour the sink redundancy request within policy | S | W |  | conformance: TestSinkRedundancy; TestSinkRedundancyEmission | closed |
 | C-4.2-10 | A sender MUST NOT emit an offset exceeding the declaration (uplink) | C | W | sample entity.ingest discarded(offset-over-declaration) | conformance: TestUplinkObserver; TestUplinkRedundancyClamp | closed |
 | C-4.2-11 | A sender MUST NOT emit an offset exceeding the declaration (sink) | S | W |  | conformance: TestSinkRedundancy; TestSinkRedundancyOffDefault | closed |
+| C-4.2-12 | `lockstep` on the config declares one shared frame counter across every entity source track the connection instantiates | C | W |  | conformance: TestUplinkLockstep | closed |
+| C-4.2-13 | The space buffers a lockstep connection's sources as one stream provisioned at the members' maximum `quality` and `redundancy` | S | X |  |  | with the lockstep implementation |
+| C-4.2-14 | A client SHOULD NOT declare lockstep for sources captured on separate clocks | C | X |  |  | inspection |
 
 ### Core §4.3
 
@@ -172,6 +175,7 @@ file together, and the test refuses the pair when they differ.*
 | C-5.2-1 | An uplink reconnect is a new track instance and group-ids restart at 0 | C | W |  | conformance: TestUplinkObserver | closed |
 | C-5.2-2 | Sink ids start at 0 when rendering starts and run across subscriber churn. A joining subscription attaches at the current id | S | W |  | conformance: TestSinkIdsAcrossChurn | closed |
 | C-5.2-3 | All per-track receiver state is scoped to the (session, track) instance and resets with it | C, S | W |  |  | client harness later |
+| C-5.2-4 | On a lockstep connection every member emits at every frame (flags `0x00` when it has nothing), the counters never diverge, and all restart at 0 together | C | W |  | conformance: TestUplinkLockstep | closed |
 
 ### Core §5.3
 
@@ -444,29 +448,30 @@ file together, and the test refuses the pair when they differ.*
 
 | Class | Count |
 |---|---|
-| Assertions | 243 |
-| Server party (S alone or with another) | 183 |
-| Client party (C alone or with another) | 60 |
-| Wire-observable (W) | 214 |
+| Assertions | 247 |
+| Server party (S alone or with another) | 184 |
+| Client party (C alone or with another) | 63 |
+| Wire-observable (W) | 216 |
 | Needs fixture (F) | 10 |
-| By inspection (X) | 22 |
+| By inspection (X) | 24 |
 | Debug-corroborated | 41 |
-| With a named test today | 159 |
-| With no test found by name | 84 |
+| With a named test today | 172 |
+| With no test found by name | 75 |
 
 ## Triage after the polite-client pass (2026-09-03)
 
 | Triage | Count |
 |---|---|
-| closed | 92 |
+| closed | 94 |
 | hostile client later | 56 |
 | with the diagnostics implementation | 29 |
 | client harness later | 19 |
-| inspection | 15 |
+| inspection | 16 |
 | raw layer later | 11 |
 | acoustic harness later | 8 |
 | fixture item later | 7 |
 | golden vectors | 6 |
+| with the lockstep implementation | 1 |
 
 "Closed" means a test in this package exercises the row from the
 wire on the reference, both transports. "Raw layer later" rows need
@@ -510,6 +515,9 @@ Made while moving the inventory into the spec, 2026-09-03.
   another sink, measure) and stay mapped to the server repo's engine
   tests until one exists.
 - Nothing was struck.
+- Lockstep (2026-09-03, `plan/lockstep.md`): `C-4.2-12` to `C-4.2-14`
+  and `C-5.2-4` arrived with the spec text, the observer's in-step
+  check closing the two sender rows from day one.
 - The polite-client pass (2026-09-03, later): 28 more rows closed
   with the existing client. `C-2-4` is closed on its positive half
   only, since the polite client refuses to encode a key outside the
