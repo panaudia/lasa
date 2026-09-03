@@ -20,6 +20,7 @@ package server
 // TTL; nothing here touches an audio path.
 
 import (
+	"fmt"
 	"strconv"
 	"sync"
 	"time"
@@ -112,14 +113,25 @@ func (g *moderationGate) check(res *connect.Resolved) *connect.Rejection {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	if until, ok := g.clients[res.ClientID]; ok && effective(until, now) {
-		return &connect.Rejection{Code: wire.ErrCodeBlocked, Reason: "client blocked"}
+		return &connect.Rejection{Code: wire.ErrCodeBlocked, Reason: blockedReason("client blocked", until)}
 	}
 	for _, r := range res.Roles {
 		if until, ok := g.roles[r]; ok && effective(until, now) {
-			return &connect.Rejection{Code: wire.ErrCodeBlocked, Reason: "role blocked"}
+			return &connect.Rejection{Code: wire.ErrCodeBlocked, Reason: blockedReason("role blocked", until)}
 		}
 	}
 	return nil
+}
+
+// blockedReason carries the block's expiry in the reason phrase
+// (lasa-core.md §4.6, SHOULD) as unix seconds, or nothing for a block
+// with no expiry. Advisory to humans and tooling: correctness rides the
+// code alone.
+func blockedReason(what string, until int64) string {
+	if until == 0 {
+		return what
+	}
+	return fmt.Sprintf("%s until %d", what, until)
 }
 
 // effective: 0 = forever; otherwise blocked until the timestamp.
