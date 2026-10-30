@@ -4,7 +4,7 @@ go 1.26.7
 
 require (
 	github.com/golang-jwt/jwt/v5 v5.3.1
-	github.com/panaudia/moqtransport v0.8.5-lasa.2
+	github.com/panaudia/moqtransport v0.8.5-lasa.3
 	github.com/quic-go/quic-go v0.61.0
 	github.com/quic-go/webtransport-go v0.12.0
 	github.com/santhosh-tekuri/jsonschema/v6 v6.0.2
