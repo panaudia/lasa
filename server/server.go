@@ -100,6 +100,12 @@ type Config struct {
 
 	// SetupTimeout bounds the MoQ handshake (default 10 s).
 	SetupTimeout time.Duration
+
+	// ArrivalRecorder, when set, writes every entity source's packet
+	// arrivals to a file per session (arrival.go): the server side of
+	// the iOS transport gates' uplink measurements. A test fixture that
+	// reads the wall clock on the ingress path; nil in production.
+	ArrivalRecorder *ArrivalRecorder
 }
 
 // Server is one LASA space. All space-scoped machinery lives here — a

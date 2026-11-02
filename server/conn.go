@@ -239,6 +239,9 @@ func (cs *connSession) start() error {
 		if err != nil {
 			return fmt.Errorf("EntityJoined(%s): %w", e.ID, err)
 		}
+		if rec := cs.srv.cfg.ArrivalRecorder; rec != nil {
+			h = rec.wrap(e.ID, h) // test fixture: stamps arrivals ahead of the handler
+		}
 		// The entity's declared sink redundancy (§4.2: the client's
 		// request that the space emit repeats on its sink track),
 		// filtered through deployment policy. Static for the session;
@@ -504,6 +507,12 @@ func (cs *connSession) teardown() {
 		_ = cs.econn.Close()
 		for _, e := range cs.resolved.Entities {
 			cs.srv.cfg.Backend.EntityLeft(cs.resolved.ClientID, e.ID)
+			cs.mu.Lock()
+			h := cs.entityByID[e.ID]
+			cs.mu.Unlock()
+			if a, ok := h.(*arrivalRecord); ok {
+				a.flush() // the session's arrival record, after its last packet
+			}
 			// Roster hygiene the embedder cannot forget (design §6).
 			cs.srv.collector.Remove(e.ID)
 			// After EntityLeft (see dropEntity): end the departed
