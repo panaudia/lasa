@@ -531,8 +531,12 @@ ts-present bit is set the packet carries a u64 unix-epoch microseconds
 timestamp naming the first sample of the accompanying frame. The
 emission cadence is on stream start and on the order of once per second.
 [C-5.1-15] The anchor is per track instance and re-established after
-reconnect. [C-5.1-16] These timestamps are informational, and
-presentation timing does not depend on them.
+reconnect. [C-5.1-16] These timestamps are informational: they exist
+for measurement and diagnostics (one-way delay, path analysis, the
+arrival records), and they play no part in playout. A receiver MUST
+NOT use them to schedule, align or drop audio; playout is governed by
+the jitter buffer on fill alone, and no shared clock or presentation
+timestamp exists in this design. [C-5.1-17]
 
 ### 5.2 Id continuity: session-scoped, reconnect restarts at zero
 

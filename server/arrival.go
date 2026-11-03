@@ -42,8 +42,12 @@ type ArrivalRecorder struct {
 	// <entity>-<join time, RFC 3339>.rec, created if missing.
 	Dir string
 	// MaxRecords bounds one session's record; past it packets are
-	// counted as dropped and the file ends. 200 packets per second for
-	// thirty minutes is 360,000 records, 11.5 MB. Default when 0.
+	// counted as dropped and the file ends. The default, 1,500,000
+	// records (48 MB), covers 200 packets per second for two hours or
+	// the S3 (c) and (d) load runs (2,000 per second for five minutes,
+	// a ramp to 5,000 per second), which the first default of 360,000
+	// truncated on 2026-11-02. Memory grows with the session, by
+	// doubling, so an idle entity costs nothing.
 	MaxRecords int
 	// Err receives a flush failure; nil ignores it. The server has no
 	// logger of its own; the embedder passes its own.
@@ -59,7 +63,7 @@ func (r *ArrivalRecorder) maxRecords() int {
 	if r.MaxRecords > 0 {
 		return r.MaxRecords
 	}
-	return 200 * 60 * 30
+	return 1_500_000
 }
 
 // wrap returns h with arrival recording in front of it, for one entity

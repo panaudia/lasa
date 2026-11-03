@@ -167,6 +167,7 @@ file together, and the test refuses the pair when they differ.*
 | C-5.1-14 | The uplink carries no timestamps | C | W |  | conformance: TestUplinkObserver | closed |
 | C-5.1-15 | Sink ts is u64 unix microseconds of the first sample when bit 6 is set, emitted on start and about once per second, and `ts(seq)` is linear at 5 ms | S | W |  | conformance: TestSinkContinuity; TestSinkGolden | closed |
 | C-5.1-16 | The ts anchor is per track instance and re-established after reconnect | S | W |  | conformance: TestSinkIdsAcrossChurn | closed |
+| C-5.1-17 | A receiver MUST NOT use sink timestamps to schedule, align or drop audio; playout is governed by the jitter buffer on fill alone, with no shared clock or presentation timestamp | C | X |  |  | inspection |
 
 ### Core §5.2
 
